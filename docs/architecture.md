@@ -7,6 +7,7 @@ container_engine/
 │   └── config.yaml            # 配置文件，使用 YAML 格式
 ├── container/                 # 容器管理模块
 │   ├── __init__.py
+|   ├── container.py
 │   ├── container_manager.py    # 容器管理类（负责创建/删除容器）
 │   ├── container_runtime.py    # 容器运行时类（与容器运行时交互，启动/停止容器）
 │   └── image_handler.py        # 镜像处理类（下载/管理镜像）
@@ -22,6 +23,10 @@ container_engine/
 │   ├── __init__.py
 │   ├── pod.py                 # Pod 类（管理 Pod 的生命周期）
 │   ├── pod_controller.py       # Pod 控制器（管理 Pod 的创建和删除）
+├── node/                       # Pod 管理模块
+│   ├── __init__.py
+│   ├── node.py                 # node 类（管理 Pod 的生命周期）
+│   ├── node_controller.py       # node 控制器（管理 Pod 的创建和删除）
 ├── kubernetes/                # Kubernetes 兼容性模块（可选）
 │   ├── __init__.py
 │   ├── k8s_client.py          # K8s 客户端类（与 K8s 兼容的接口）
