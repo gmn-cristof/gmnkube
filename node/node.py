@@ -1,52 +1,65 @@
-class Pod:
-    def __init__(self, name, namespace, containers, labels=None, annotations=None):
+class Node:
+    def __init__(self, name, total_cpu, total_memory, labels=None, annotations=None):
         """
-        初始化 Pod 对象。
+        初始化 Node 对象。
         
-        :param name: Pod 名称
-        :param namespace: Pod 所在的命名空间
-        :param containers: 容器列表，包含容器的定义
-        :param labels: Pod 的标签（可选）
-        :param annotations: Pod 的注释（可选）
+        :param name: 节点名称
+        :param total_cpu: 节点总 CPU 资源（单位：核）
+        :param total_memory: 节点总内存资源（单位：MB）
+        :param labels: 节点标签（可选）
+        :param annotations: 节点注释（可选）
         """
         self.name = name
-        self.namespace = namespace
-        self.containers = containers  # 这个应该是一个容器对象的列表
-        self.labels = labels or {}
-        self.annotations = annotations or {}
-        self.status = "Pending"  # 初始状态
-        self.creation_timestamp = None  # 创建时间戳
+        self.total_cpu = total_cpu  # 总 CPU 资源
+        self.total_memory = total_memory  # 总内存资源
+        self.labels = labels or {}  # 标签
+        self.annotations = annotations or {}  # 注释
+        self.allocated_cpu = 0  # 已分配的 CPU 资源
+        self.allocated_memory = 0  # 已分配的内存资源
+        self.pods = []  # 当前运行的 Pods 列表
+        self.status = "Ready"  # 初始状态：Ready
 
-    def start(self):
-        """Start the Pod"""
-        self.status = 'Running'
-        print(f"Pod '{self.name}' is now running.")
+    def add_pod(self, pod):
+        """在节点上运行一个新的 Pod，并更新资源分配。"""
+        required_cpu = pod.resources.get("cpu", 0)
+        required_memory = pod.resources.get("memory", 0)
 
-    def stop(self):
-        """Stop the Pod"""
-        self.status = 'Stopped'
-        print(f"Pod '{self.name}' has been stopped.")
-    
+        if self.can_schedule(required_cpu, required_memory):
+            self.pods.append(pod)
+            self.allocated_cpu += required_cpu
+            self.allocated_memory += required_memory
+            print(f"Pod {pod.name} scheduled on Node {self.name}.")
+        else:
+            raise Exception(f"Not enough resources on Node {self.name} to schedule Pod {pod.name}.")
+
+    def remove_pod(self, pod):
+        """从节点上移除一个 Pod，并释放相应资源。"""
+        if pod in self.pods:
+            self.pods.remove(pod)
+            self.allocated_cpu -= pod.resources.get("cpu", 0)
+            self.allocated_memory -= pod.resources.get("memory", 0)
+            print(f"Pod {pod.name} removed from Node {self.name}.")
+
+    def can_schedule(self, required_cpu, required_memory):
+        """检查节点是否有足够的资源调度 Pod。"""
+        available_cpu = self.total_cpu - self.allocated_cpu
+        available_memory = self.total_memory - self.allocated_memory
+        return available_cpu >= required_cpu and available_memory >= required_memory
+
     def set_status(self, status):
-        """设置 Pod 的状态。"""
+        """更新节点状态。"""
         self.status = status
 
-    def add_label(self, key, value):
-        """添加标签。"""
-        self.labels[key] = value
-
-    def add_annotation(self, key, value):
-        """添加注释。"""
-        self.annotations[key] = value
-
     def to_dict(self):
-        """将 Pod 转换为字典，以便于序列化。"""
+        """将节点信息转换为字典形式，便于序列化。"""
         return {
             "name": self.name,
-            "namespace": self.namespace,
-            "containers": [container.to_dict() for container in self.containers],
+            "total_cpu": self.total_cpu,
+            "total_memory": self.total_memory,
+            "allocated_cpu": self.allocated_cpu,
+            "allocated_memory": self.allocated_memory,
+            "pods": [pod.name for pod in self.pods],
+            "status": self.status,
             "labels": self.labels,
             "annotations": self.annotations,
-            "status": self.status,
-            "creation_timestamp": self.creation_timestamp,
         }
