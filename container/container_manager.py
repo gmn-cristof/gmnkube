@@ -9,7 +9,7 @@ class ContainerManager:
         """Creates a container using containerd"""
         try:
             result = subprocess.run(
-                ['ctr', 'run', '--name', name, image], capture_output=True, text=True
+                ['ctr', 'create', image, name], capture_output=True, text=True
             )
             if result.returncode != 0:
                 raise Exception(f"Error creating container: {result.stderr.strip()}")

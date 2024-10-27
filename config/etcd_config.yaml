@@ -1,0 +1,6 @@
+etcd:
+  nodes:
+    - localhost:2379
+    - localhost:2380
+    - localhost:2381
+  lease_ttl: 60

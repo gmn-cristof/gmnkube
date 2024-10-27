@@ -1,4 +1,8 @@
 import logging
+from container.container_runtime import ContainerRuntime
+from container.container import Container
+
+containerRuntime=ContainerRuntime()
 
 class Pod:
     def __init__(self, name: str, containers: list, namespace: str = 'default', volumes=None):
@@ -17,7 +21,7 @@ class Pod:
         all_started = True
         for container in self.containers:
             try:
-                container.start()
+                containerRuntime.start_container(container.name)
                 logging.info(f"Container '{container.name}' started successfully.")
             except Exception as e:
                 logging.error(f"Failed to start container '{container.name}': {e}")
@@ -38,7 +42,7 @@ class Pod:
         all_stopped = True
         for container in self.containers:
             try:
-                container.stop()
+                containerRuntime.stop_container(container.name)
                 logging.info(f"Container '{container.name}' stopped successfully.")
             except Exception as e:
                 logging.error(f"Failed to stop container '{container.name}': {e}")
@@ -66,7 +70,7 @@ class Pod:
 
     def get_status(self):
         """Get the current status of the Pod and its containers."""
-        container_statuses = {c.name: c.status for c in self.containers}
+        container_statuses = {c.name: c.to_dict for c in self.containers}
         return {
             'pod_name': self.name,
             'namespace': self.namespace,
