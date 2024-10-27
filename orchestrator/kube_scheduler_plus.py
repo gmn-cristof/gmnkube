@@ -1,6 +1,10 @@
 import yaml
+import logging
 
-class kube_Scheduler_plus:
+# 配置 logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+class KubeSchedulerPlus:
     def __init__(self, weights=None):
         """
         初始化调度器，并从配置文件加载节点信息。
@@ -21,7 +25,7 @@ class kube_Scheduler_plus:
     def filter_nodes(self, required_resources):
         """
         过滤节点，排除不满足资源需求或状态不可用的节点。
-        :param required_resources: 容器所需资源的字典（如 {'cpu': 2, 'gpu': 1, 'memory': 2048, 'io': 100, 'network': 1000}）
+        :param required_resources: Pod 所需资源的字典（如 {'cpu': 2, 'gpu': 1, 'memory': 2048, 'io': 100, 'network': 1000}）
         :return: 过滤后可用节点的列表
         """
         available_nodes = []
@@ -65,16 +69,17 @@ class kube_Scheduler_plus:
         # 按照节点资源评分进行升序排序
         return sorted(available_nodes, key=self.calculate_score)
 
-    def schedule_container(self, container_name: str, required_resources):
+    def schedule_pod(self, pod_name: str, required_resources):
         """
-        根据调度算法为容器选择合适的节点。
-        :param container_name: 容器名称
-        :param required_resources: 容器所需的资源字典
+        根据调度算法为 Pod 选择合适的节点。
+        :param pod_name: Pod 名称
+        :param required_resources: Pod 所需的资源字典
         :return: 被选中的节点
         """
         # 1. 过滤节点
         available_nodes = self.filter_nodes(required_resources)
         if not available_nodes:
+            logging.error("No available nodes with sufficient resources.")
             raise Exception("No available nodes with sufficient resources.")
 
         # 2. 优选节点
@@ -82,7 +87,7 @@ class kube_Scheduler_plus:
 
         # 选择资源负载最低的节点
         selected_node = prioritized_nodes[0]
-        print(f"Scheduled container {container_name} on node {selected_node['name']}.")
+        logging.info(f"Scheduled Pod {pod_name} on node {selected_node['name']}.")
         return selected_node
 
 # 示例配置文件格式 (config.yaml):

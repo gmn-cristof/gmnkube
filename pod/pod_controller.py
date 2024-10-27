@@ -1,24 +1,52 @@
 import logging
-from pod.pod import Pod
+import yaml
+from .pod import Pod
 from container.container import Container
 
 class PodController:
     def __init__(self):
         self.pods = {}
 
-    def create_pod(self, name: str, containers: list):
+    def create_pod(self, name: str, containers: list, namespace: str = 'default'):
         """Creates a new Pod with a list of containers"""
         if name in self.pods:
             logging.error(f"Pod '{name}' already exists.")
             raise ValueError(f"Pod '{name}' already exists.")
 
-        pod = Pod(name=name, containers=containers)
+        pod = Pod(name=name, containers=containers, namespace=namespace)
         try:
             pod.start()
             self.pods[name] = pod
             logging.info(f"Pod '{name}' created successfully with containers: {[c.name for c in containers]}.")
         except Exception as e:
             logging.error(f"Failed to create Pod '{name}': {e}")
+            raise
+
+    def create_pod_from_yaml(self, yaml_file: str):
+        """Creates a Pod from a YAML file"""
+        try:
+            with open(yaml_file, 'r') as file:
+                pod_config = yaml.safe_load(file)
+            
+            # 确保 YAML 文件结构符合预期
+            if pod_config['kind'] != 'Pod':
+                raise ValueError("Invalid YAML file: kind must be 'Pod'")
+
+            name = pod_config['metadata']['name']
+            namespace = pod_config['metadata'].get('namespace', 'default')
+            containers = [
+                Container(
+                    name=c['name'],
+                    image=c['image'],
+                    resources=c.get('resources', {}),
+                    ports=c.get('ports', [])
+                ) for c in pod_config['spec']['containers']
+            ]
+
+            self.create_pod(name, containers, namespace)
+        
+        except Exception as e:
+            logging.error(f"Failed to create Pod from YAML '{yaml_file}': {e}")
             raise
 
     def delete_pod(self, name: str):

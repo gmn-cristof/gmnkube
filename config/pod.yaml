@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: example-pod
+  namespace: default
+spec:
+  containers:
+    - name: app-container
+      image: example/app-image:latest
+      resources:
+        requests:
+          cpu: "500m"            # 请求 500 毫核 CPU
+          memory: "256Mi"        # 请求 256 MiB 内存
+          nvidia.com/gpu: "1"    # 请求 1 个 GPU
+        limits:
+          cpu: "1"               # 限制 1 核 CPU
+          memory: "512Mi"        # 限制 512 MiB 内存
+          nvidia.com/gpu: "1"    # 限制 1 个 GPU
+      ports:
+        - containerPort: 8080
+    - name: sidecar-container
+      image: example/sidecar-image:latest
+      resources:
+        requests:
+          cpu: "200m"            # 请求 200 毫核 CPU
+          memory: "128Mi"        # 请求 128 MiB 内存
+        limits:
+          cpu: "500m"            # 限制 500 毫核 CPU
+          memory: "256Mi"        # 限制 256 MiB 内存
+  restartPolicy: Always
