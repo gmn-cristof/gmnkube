@@ -1,3 +1,8 @@
+import logging
+
+# 配置日志
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 class Node:
     def __init__(self, name, total_cpu, total_memory, total_gpu=0, total_io=0, total_net=0, labels=None, annotations=None):
         """
@@ -13,20 +18,20 @@ class Node:
         :param annotations: 节点注释（可选）
         """
         self.name = name
-        self.total_cpu = total_cpu  # 总 CPU 资源
-        self.total_memory = total_memory  # 总内存资源
-        self.total_gpu = total_gpu  # 总 GPU 资源
-        self.total_io = total_io  # 总 IO 资源
-        self.total_net = total_net  # 总网络带宽
-        self.labels = labels or {}  # 标签
-        self.annotations = annotations or {}  # 注释
-        self.allocated_cpu = 0  # 已分配的 CPU 资源
-        self.allocated_memory = 0  # 已分配的内存资源
-        self.allocated_gpu = 0  # 已分配的 GPU 资源
-        self.allocated_io = 0  # 已分配的 IO 资源
-        self.allocated_net = 0  # 已分配的网络带宽
-        self.pods = []  # 当前运行的 Pods 列表
-        self.status = "Ready"  # 初始状态：Ready
+        self.total_cpu = total_cpu
+        self.total_memory = total_memory
+        self.total_gpu = total_gpu
+        self.total_io = total_io
+        self.total_net = total_net
+        self.labels = labels or {}
+        self.annotations = annotations or {}
+        self.allocated_cpu = 0
+        self.allocated_memory = 0
+        self.allocated_gpu = 0
+        self.allocated_io = 0
+        self.allocated_net = 0
+        self.pods = []
+        self.status = "Ready"
 
     def add_pod(self, pod):
         """在节点上运行一个新的 Pod，并更新资源分配。"""
@@ -43,8 +48,9 @@ class Node:
             self.allocated_gpu += required_gpu
             self.allocated_io += required_io
             self.allocated_net += required_net
-            print(f"Pod {pod.name} scheduled on Node {self.name}.")
+            logging.info(f"Pod {pod.name} scheduled on Node {self.name}.")
         else:
+            logging.error(f"Not enough resources on Node {self.name} to schedule Pod {pod.name}.")
             raise Exception(f"Not enough resources on Node {self.name} to schedule Pod {pod.name}.")
 
     def remove_pod(self, pod):
@@ -56,7 +62,9 @@ class Node:
             self.allocated_gpu -= pod.resources.get("gpu", 0)
             self.allocated_io -= pod.resources.get("io", 0)
             self.allocated_net -= pod.resources.get("net", 0)
-            print(f"Pod {pod.name} removed from Node {self.name}.")
+            logging.info(f"Pod {pod.name} removed from Node {self.name}.")
+        else:
+            logging.warning(f"Attempted to remove non-existent Pod {pod.name} from Node {self.name}.")
 
     def can_schedule(self, required_cpu, required_memory, required_gpu, required_io, required_net):
         """检查节点是否有足够的资源调度 Pod。"""
@@ -75,6 +83,7 @@ class Node:
     def set_status(self, status):
         """更新节点状态。"""
         self.status = status
+        logging.info(f"Node {self.name} status updated to {status}.")
 
     def to_dict(self):
         """将节点信息转换为字典形式，便于序列化。"""
