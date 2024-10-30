@@ -1,213 +1,150 @@
-import socket
-import threading
-import pickle
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
-import gym
-import myenv
-from kubernetes import client, config
-from sanic import Sanic
-from sanic.response import json
-from sanic.request import Request
+import tensorflow as tf
+from collections import deque
+import random
+import logging
 
-# Sanic应用
-app = Sanic("DDQN_Scheduler")
+class DDQNScheduler:
+    def __init__(self, node_controller, config):
+        """
+        初始化 DDQN 调度器。
 
-# 获取k8s集群中节点的IP和主机名
-def get_node_ips():
-    """从 Kubernetes 集群中获取所有 Node 的 IP 地址"""
-    config.load_kube_config()
-    v1 = client.CoreV1Api()
-    
-    node_ips = []
-    nodes = v1.list_node()
-    for node in nodes.items:
-        node_name = node.metadata.name
-        for address in node.status.addresses:
-            if address.type == 'InternalIP':
-                node_ips.append((node_name, address.address))
-                break
+        :param node_controller: NodeController 实例，用于节点管理
+        :param state_size: 状态空间大小
+        :param action_size: 动作空间大小
+        :param config: 配置字典，包含超参数
+        """
+        # 配置超参数
+        self.config = {
+            'gamma': 0.95,
+            'epsilon': 1.0,
+            'epsilon_min': 0.01,
+            'epsilon_decay': 0.995,
+            'learning_rate': 0.001,
+            'batch_size': 32
+        }
+        self.node_controller = node_controller
+        self.state_size = 6  # 动态计算状态大小  self._calculate_state_size()
+        self.action_size = len(self.node_controller.nodes)  # 根据节点数量动态设置动作大小
+        self.gamma = config.get('gamma', 0.95)
+        self.epsilon = config.get('epsilon', 1.0)
+        self.epsilon_min = config.get('epsilon_min', 0.01)
+        self.epsilon_decay = config.get('epsilon_decay', 0.995)
+        self.learning_rate = config.get('learning_rate', 0.001)
+        self.memory = deque(maxlen=2000)
+        self.model = self._build_model()
+        self.target_model = self._build_model()  # 目标网络
+        self.batch_size = config.get('batch_size', 32)
+        self.update_target_frequency = 10  # 目标网络更新频率
+        self.update_counter = 0  # 记录更新次数
 
-    return node_ips
+    def _build_model(self):
+        """构建深度 Q 网络模型。"""
+        model = tf.keras.Sequential()
+        model.add(tf.keras.layers.Dense(64, input_dim=self.state_size, activation='relu'))
+        model.add(tf.keras.layers.Dense(64, activation='relu'))
+        model.add(tf.keras.layers.Dense(self.action_size, activation='linear'))
+        model.compile(loss='mse', optimizer=tf.keras.optimizers.Adam(learning_rate=self.learning_rate))
+        return model
 
-# 通过K8s获取节点IP并打印出来
-node_ips = get_node_ips()
-print(f"[INFO] Nodes and IPs: {node_ips}")
+    def remember(self, state, action, reward, next_state, done):
+        """将经历存储到记忆中。"""
+        self.memory.append((state, action, reward, next_state, done))
 
-# 创建到节点的socket连接
-def create_socket_connections(node_ips):
-    """根据Node IPs创建Socket连接"""
-    sockets = []
-    for node_name, node_ip in node_ips:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    def act(self, state):
+        """根据当前状态选择动作。"""
+        if np.random.rand() <= self.epsilon:
+            return random.randrange(self.action_size)
+        act_values = self.model.predict(state)
+        return np.argmax(act_values[0])  # 返回最大 Q 值的动作
+
+    def replay(self):
+        """从记忆中抽样并训练模型。"""
+        if len(self.memory) < self.batch_size:
+            return
+        minibatch = random.sample(self.memory, self.batch_size)
+        for state, action, reward, next_state, done in minibatch:
+            target = reward
+            if not done:
+                target += self.gamma * np.amax(self.target_model.predict(next_state)[0])  # 使用目标网络
+            target_f = self.model.predict(state)
+            target_f[0][action] = target
+            self.model.fit(state, target_f, epochs=1, verbose=0)
+
+        if self.epsilon > self.epsilon_min:
+            self.epsilon *= self.epsilon_decay
+        
+        # 更新目标网络
+        self.update_counter += 1
+        if self.update_counter % self.update_target_frequency == 0:
+            self.update_target_network()
+
+    def update_target_network(self):
+        """更新目标网络的权重。"""
+        self.target_model.set_weights(self.model.get_weights())
+
+    def schedule_pod(self, pod):
+        """为 Pod 调度选择节点。"""
+        state = self._get_state()  # 从节点获取当前状态
+        action = self.act(state)
+        node_name = self._get_node_from_action(action)
+
+        # 调度 Pod
         try:
-            sock.connect((node_ip, 9000))
-            print(f"[INFO] Connected to {node_name} at {sock.getpeername()}")
-            sockets.append(sock)
-        except socket.error as e:
-            print(f"[ERROR] Failed to connect to {node_name} at {node_ip}: {e}")
-    return sockets
+            self.node_controller.schedule_pod_to_node(pod, node_name)
+            next_state = self._get_state()  # 获取下一个状态
+            reward = self._calculate_reward(node_name)  # 计算调度的奖励
+            done = False  # 根据需要设定完成条件
+            self.remember(state, action, reward, next_state, done)
+            self.replay()
+        except Exception as e:
+            logging.error(f"Failed to schedule Pod {pod.name} to Node {node_name}: {e}")
 
-# 动态创建与所有节点的连接
-sockets = create_socket_connections(node_ips)
+    def _get_state(self):
+        """获取当前系统状态，返回状态向量。"""
+        states = []
+        for node in self.node_controller.nodes.values():
+            states.append([
+                node.allocated_cpu,
+                node.allocated_memory,
+                node.allocated_gpu,
+                node.total_gpu - node.allocated_gpu, #剩余  GPU
+                node.total_cpu - node.allocated_cpu,  # 剩余 CPU
+                node.total_memory - node.allocated_memory  # 剩余内存
+            ])
+        return np.array(states).reshape(1, -1)
 
-# 环境初始化
-env = gym.make('k8s-v0').unwrapped
-env.setsocks(*sockets)  # 设置Socket连接到环境中
+    def _get_node_from_action(self, action):
+        """根据动作选择节点名称。"""
+        node_names = list(self.node_controller.nodes.keys())
+        return node_names[action]
 
-# hyper parameters
-BATCH_SIZE = 32
-LR = 0.01
-EPSILON = 0.9
-GAMMA = 0.9
-TARGET_REPLACE_ITER = 100
-MEMORY_CAPACITY = 100
-N_ACTIONS = env.action_space.n
-N_STATES = env.observation_space.shape[0]
+    def _calculate_reward(self, node_name):
+        """计算调度的奖励，可以根据节点资源利用率、Pod 性能等因素设计。"""
+        node = self.node_controller.get_node(node_name)
+        
+        # 成功调度
+        if node.status == "Ready":
+            # 计算资源利用率
+            cpu_usage_ratio = node.allocated_cpu / node.total_cpu if node.total_cpu > 0 else 0
+            memory_usage_ratio = node.allocated_memory / node.total_memory if node.total_memory > 0 else 0
+            gpu_usage_ratio = node.allocated_gpu / node.total_gpu if node.total_gpu > 0 else 0
 
-class Net(nn.Module):
-    def __init__(self):
-        super(Net, self).__init__()
-        self.fc1 = nn.Linear(N_STATES, 50)
-        self.fc1.weight.data.normal_(0, 0.1)
-        self.out = nn.Linear(50, N_ACTIONS)
-        self.out.weight.data.normal_(0, 0.1)
+            # 计算基础奖励
+            reward = 1 - (cpu_usage_ratio + memory_usage_ratio + gpu_usage_ratio) / 3  # 利用率越低，奖励越高
 
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        actions_value = self.out(x)
-        return actions_value
+            # 计算所有节点的资源利用率
+            cpu_utilizations = [n.allocated_cpu / n.total_cpu if n.total_cpu > 0 else 0 for n in self.node_controller.nodes.values()]
+            memory_utilizations = [n.allocated_memory / n.total_memory if n.total_memory > 0 else 0 for n in self.node_controller.nodes.values()]
+            gpu_utilizations = [n.allocated_gpu / n.total_gpu if n.total_gpu > 0 else 0 for n in self.node_controller.nodes.values()]
 
-class DDQN(object):
-    def __init__(self):
-        self.eval_net, self.target_net = Net(), Net()
-        self.learn_step_counter = 0
-        self.memory_counter = 0
-        self.memory = np.zeros((MEMORY_CAPACITY, N_STATES * 2 + 2))
-        self.optimizer = torch.optim.Adam(self.eval_net.parameters(), lr=LR)
-        self.loss_func = nn.MSELoss()
+            # 负载均衡考量
+            cpu_load_balance_factor = 1 / (1 + np.std(cpu_utilizations))
+            memory_load_balance_factor = 1 / (1 + np.std(memory_utilizations))
+            gpu_load_balance_factor = 1 / (1 + np.std(gpu_utilizations))
 
-    def choose_action(self, x):
-        """根据 ε-greedy 策略选择动作"""
-        x = torch.unsqueeze(torch.FloatTensor(x), 0)
-        if np.random.uniform() < EPSILON:
-            actions_value = self.eval_net.forward(x)
-            action = torch.max(actions_value, 1)[1].data.numpy()
-            action = action[0]
-        else:
-            action = np.random.randint(0, N_ACTIONS)
-        return action
+            # 加权负载均衡影响
+            reward += (cpu_load_balance_factor + memory_load_balance_factor + gpu_load_balance_factor) / 3 * 0.5
 
-    def store_transition(self, s, a, r, s_):
-        """存储经验"""
-        transition = np.hstack((s, [a, r], s_))
-        index = self.memory_counter % MEMORY_CAPACITY
-        self.memory[index, :] = transition
-        self.memory_counter += 1
-
-    def learn(self):
-        """DDQN学习步骤"""
-        if self.learn_step_counter % TARGET_REPLACE_ITER == 0:
-            self.target_net.load_state_dict(self.eval_net.state_dict())
-        self.learn_step_counter += 1
-
-        sample_index = np.random.choice(MEMORY_CAPACITY, BATCH_SIZE)
-        b_memory = self.memory[sample_index, :]
-        b_s = torch.FloatTensor(b_memory[:, :N_STATES])
-        b_a = torch.LongTensor(b_memory[:, N_STATES:N_STATES + 1].astype(int))
-        b_r = torch.FloatTensor(b_memory[:, N_STATES + 1:N_STATES + 2])
-        b_s_ = torch.FloatTensor(b_memory[:, -N_STATES:])
-
-        # DDQN核心：拆分评估网络与目标网络，避免过估计
-        q_eval = self.eval_net(b_s).gather(1, b_a)
-        q_eval_next = self.eval_net(b_s_)
-        q_next = self.target_net(b_s_).gather(1, torch.max(q_eval_next, 1)[1].unsqueeze(1))
-        q_target = b_r + GAMMA * q_next.view(BATCH_SIZE, 1)
-
-        loss = self.loss_func(q_eval, q_target)
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-
-class StepThread(threading.Thread):
-    def __init__(self, func, dqn, env, state, action):
-        threading.Thread.__init__(self)
-        self.func = func
-        self.dqn = dqn
-        self.env = env
-        self.state = state
-        self.action = action
-
-    def run(self):
-        print('[INFO] Start the Step thread...')
-        self.func(self.dqn, self.env, self.state, self.action)
-        print('[INFO] Exit the Step thread!')
-
-def makeStep(dqn, env, state, action):
-    """执行一步调度"""
-    s_, r, done, info = env.step(action)
-
-    dqn.store_transition(state, action, r, s_)
-
-    if env.count == 100:
-        pod_action.clear()
-        env.reset()
-
-    if dqn.memory_counter > MEMORY_CAPACITY:
-        t_file = open('transition.pkl', 'wb')
-        pickle.dump(dqn.memory, t_file)
-        t_file.close()
-
-pod_action = {}  # 存储每个 Pod 的调度动作
-
-@app.route('/choose', methods=['POST'])
-async def choose(request: Request):
-    """根据 Pod 名称选择调度节点"""
-    podname = request.form.get("podname")
-    print(f'[INFO] Get pod: {podname}')
-
-    if podname in pod_action:
-        print(f'[INFO] This pod has been scheduled, action: {pod_action[podname]}')
-        return json({"action": pod_action[podname]})
-
-    s = env.state
-
-    # 简化Pod类型到状态映射逻辑
-    pod_type = podname.split('-')[0]
-    pod_states = {
-        'video': [100.0, 23.0, 11.25, 2.49, 0.0, 1.54],
-        'net': [54.0, 46.2, 80.04, 71.4, 0.0, 1.58],
-        'disk': [100.0, 22.96, 12.6, 2.73, 0.0, 86.26]
-    }
-    s_pod = pod_states.get(pod_type, [0.0] * 6)
-
-    if len(s) == 24:
-        s = s + s_pod
-    else:
-        s[-6:] = s_pod
-
-    # 选择动作
-    action = ""
-    a = dqn.choose_action(s)
-    node_count = len(node_ips)
-    if a < node_count:
-        action = node_ips[a][0]  # 根据动作选择节点名
-
-    pod_action[podname] = action
-
-    # 启动一个独立线程执行步骤
-    thread = StepThread(makeStep, dqn, env, s, a)
-    thread.start()
-
-    print(f'[INFO] Action for Pod {podname} is: {action}')
-    return json({"action": action})
-
-if __name__ == "__main__":
-    dqn = DDQN()
-    s = env.reset()
-
-    print("[INFO] Environment initialize...")
-
-    app.run(host="0.0.0.0", port=1234, debug=False, auto_reload=True)
+            return reward
+        return -1

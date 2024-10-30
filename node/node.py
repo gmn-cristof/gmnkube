@@ -2,13 +2,17 @@ import logging
 from pod.pod import Pod
 from pod.pod_controller import PodController
 from etcd.etcd_client import EtcdClient  # 假设有 etcd 客户端类
+import psutil
+import GPUtil
+
 
 class Node:
-    def __init__(self, name, total_cpu, total_memory, total_gpu=0, total_io=0, total_net=0, labels=None, annotations=None):
+    def __init__(self, name, ip_adress, total_cpu, total_memory, total_gpu=0, total_io=0, total_net=0, labels=None, annotations=None):
         """
         初始化 Node 对象。
         """
         self.name = name
+        self.ip_adress = ip_adress
         self.total_cpu = total_cpu
         self.total_memory = total_memory
         self.total_gpu = total_gpu
@@ -81,6 +85,7 @@ class Node:
         """将节点信息转换为字典形式，包含资源使用比例，便于序列化。"""
         return {
             "name": self.name,
+            "ip_adress": self.ip_adress,
             "total_cpu": self.total_cpu,
             "total_memory": self.total_memory,
             "total_gpu": self.total_gpu,
@@ -105,3 +110,34 @@ class Node:
             logging.warning(f"Node {self.name} CPU usage above 80%.")
         if self.allocated_memory / self.total_memory > 0.8:
             logging.warning(f"Node {self.name} memory usage above 80%.")
+
+    def get_node_info(self):
+        """获取本机的 CPU、内存、GPU、IO 和网络资源信息。"""
+        cpu_info = psutil.cpu_count(logical=True)  # 逻辑 CPU 数量
+        memory_info = psutil.virtual_memory()  # 内存信息
+        net_info = psutil.net_if_addrs()  # 网络接口信息
+        io_info = psutil.disk_io_counters()  # IO 信息
+        gpus = GPUtil.getGPUs()  # 获取 GPU 信息
+
+        gpu_info = len(gpus)  # GPU 数量
+        total_io = io_info.read_bytes + io_info.write_bytes  # 总 IO 读写字节
+        total_net = sum([net.address for net in net_info.values()])  # 计算网络带宽总和（假设处理）
+
+        return {
+            "cpu": cpu_info,
+            "memory": memory_info.total,
+            "gpu": gpu_info,
+            "io": total_io,
+            "net": total_net,
+        }
+
+    def load_node_info(self):
+        """将获取的资源信息加载到节点对象中。"""
+        node_info = self.get_node_info()
+        self.total_cpu = node_info['cpu']
+        self.total_memory = node_info['memory']
+        self.total_gpu = node_info['gpu']
+        self.total_io = node_info['io']
+        self.total_net = node_info['net']
+
+        logging.info(f"Node {self.name} loaded resources: {node_info}")

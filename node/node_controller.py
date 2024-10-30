@@ -11,9 +11,10 @@ class NodeController:
         self.nodes = {}
         self.etcd_client = EtcdClient(host=etcd_host, port=etcd_port)
 
-    def add_node(self, name, total_cpu, total_memory, total_gpu=0, total_io=0, total_net=0, labels=None, annotations=None):
+    def add_node(self, name, ip_adress, total_cpu, total_memory, total_gpu=0, total_io=0, total_net=0, labels=None, annotations=None):
         """添加一个新的节点，并在 etcd 中保存其信息.
         :param name: 节点名称
+        :param ip_adress: 节点ip地址
         :param total_cpu: 节点总 CPU 资源
         :param total_memory: 节点总内存资源
         :param total_gpu: 节点总 GPU 资源（可选）
@@ -26,7 +27,7 @@ class NodeController:
             logging.error(f"Node '{name}' already exists.")
             raise Exception(f"Node '{name}' already exists.")
         
-        node = Node(name, total_cpu, total_memory, total_gpu, total_io, total_net, labels, annotations)
+        node = Node(name, ip_adress, total_cpu, total_memory, total_gpu, total_io, total_net, labels, annotations)
         self.nodes[name] = node
 
         # 将节点信息存储到 etcd

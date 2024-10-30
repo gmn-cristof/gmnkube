@@ -4,12 +4,14 @@ from container.container_manager import ContainerManager
 from pod.pod_controller import PodController
 from container.image_handler import ImageHandler
 from node.node_controller import NodeController
+from orchestrator.DDQN_scheduler import DDQNScheduler
 
 # 初始化各个控制器
 container_manager = ContainerManager()
 image_handler = ImageHandler()
 pod_controller = PodController()
 node_controller = NodeController()
+ddqn_scheduler = DDQNScheduler()
 
 def configure_routes(app):
     # 容器相关路由

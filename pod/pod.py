@@ -6,7 +6,7 @@ from etcd.etcd_client import EtcdClient  # 假设有一个 etcd 客户端类
 containerRuntime = ContainerRuntime()
 
 class Pod:
-    def __init__(self, name: str, containers: list, namespace: str = 'default', volumes=None):
+    def __init__(self, name: str, containers: list = [Container], namespace: str = 'default', volumes=None):
         self.name = name
         self.namespace = namespace
         self.containers = containers  # List of Container objects
