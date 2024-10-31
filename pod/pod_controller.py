@@ -5,9 +5,9 @@ from container.container import Container
 from etcd.etcd_client import EtcdClient  # 假设有 etcd 客户端类
 
 class PodController:
-    def __init__(self):
+    def __init__(self, etcd_host='localhost', etcd_port=2379):
         self.pods = {}
-        self.etcd_client = EtcdClient()
+        self.etcd_client = EtcdClient(host=etcd_host, port=etcd_port)
 
     def create_pod(self, name: str, containers: list, namespace: str = 'default'):
         """Creates a new Pod with a list of containers"""

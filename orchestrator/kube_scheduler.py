@@ -1,76 +1,66 @@
-import yaml
+import logging
+from node.node_controller import NodeController
 
-class kube_Scheduler:
-    def __init__(self):
-        # 从配置文件中加载节点信息
-        with open('config/config.yaml', 'r') as config_file:
-            config = yaml.safe_load(config_file)
-            self.nodes = config['scheduler']['nodes']
+# 配置 logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+class Kube_Scheduler:
+    def __init__(self, etcd_host='localhost', etcd_port=2379):
+        """
+        初始化 KubeSchedulerCPUMem，连接 etcd 并加载节点信息。
+        :param etcd_host: etcd 主机
+        :param etcd_port: etcd 端口
+        :param config_file: 配置文件路径
+        """
+        self.node_controller = NodeController(etcd_host, etcd_port)
 
     def filter_nodes(self, required_resources):
-        """
-        过滤不可用节点，根据节点是否有足够的资源和状态是否为 'Ready'。
-        
-        :param required_resources: 要求的资源字典 (例如: {'cpu': 2, 'memory': 1024})
-        :return: 可用节点的列表
-        """
+        """过滤可用节点，检查状态和资源是否充足。"""
         available_nodes = []
-        for node in self.nodes:
-            # 假设每个节点有 'resources' 和 'status' 两个字段
+        for node in self.node_controller.list_nodes().values():
             if node['status'] != 'Ready':
                 continue
-            
-            sufficient_resources = True
-            for resource, amount in required_resources.items():
-                if node['resources'].get(resource, 0) < amount:
-                    sufficient_resources = False
-                    break
-            
-            if sufficient_resources:
+            if self._has_sufficient_resources(node, required_resources):
                 available_nodes.append(node)
-
         return available_nodes
 
+    def _has_sufficient_resources(self, node, required_resources):
+        """检查节点是否有足够的 CPU 和内存资源。"""
+        return (
+            node['total_resources']['cpu'] >= required_resources.get('cpu', 0) and
+            node['total_resources']['memory'] >= required_resources.get('memory', 0)
+        )
+
+    def calculate_score(self, node):
+        """计算节点的 CPU 和内存负载综合评分。"""
+        total_cpu = node['total_resources']['cpu']
+        used_cpu = node['used_resources'].get('cpu', 0)
+        cpu_usage_ratio = used_cpu / total_cpu
+
+        total_memory = node['total_resources']['memory']
+        used_memory = node['used_resources'].get('memory', 0)
+        memory_usage_ratio = used_memory / total_memory
+
+        # 评分计算，使用加权和
+        return cpu_usage_ratio + memory_usage_ratio
+
     def prioritize_nodes(self, available_nodes):
-        """
-        对节点进行优选，选择资源使用率最低的节点。
-        
-        :param available_nodes: 过滤后的可用节点列表
-        :return: 根据负载排序的节点列表
-        """
-        def resource_usage(node):
-            # 计算资源使用率，越低越好，假设每个节点有 'used_resources' 和 'total_resources' 字段
-            total_usage = 0
-            for resource in node['total_resources']:
-                used = node['used_resources'].get(resource, 0)
-                total = node['total_resources'][resource]
-                total_usage += (used / total) if total > 0 else 0
-            return total_usage
+        """对可用节点进行优选。"""
+        return sorted(available_nodes, key=self.calculate_score)
 
-        # 根据资源使用率进行升序排序，使用率最低的节点优先
-        return sorted(available_nodes, key=resource_usage)
-
-    def schedule_container(self, container_name: str, required_resources):
-        """
-        根据过滤和优选的步骤调度容器。
-        
-        :param container_name: 容器名称
-        :param required_resources: 容器所需的资源字典
-        :return: 被选中的节点
-        """
-        # 1. 过滤节点
+    def schedule_pod(self, pod_name: str, required_resources):
+        """为 Pod 选择合适的节点。"""
         available_nodes = self.filter_nodes(required_resources)
         if not available_nodes:
+            logging.error("No available nodes with sufficient resources.")
             raise Exception("No available nodes with sufficient resources.")
-        
-        # 2. 优选节点
+
         prioritized_nodes = self.prioritize_nodes(available_nodes)
-        
-        # 选择优选列表中的第一个节点（资源最空闲的节点）
         selected_node = prioritized_nodes[0]
-        
-        print(f"Scheduled container {container_name} on node {selected_node['name']}.")
-        return selected_node
+        logging.info(f"Scheduled Pod {pod_name} on node {selected_node['name']}.")
+        self.node_controller.schedule_pod_to_node(pod_name, selected_node['name'])
+
+
 
 # 示例配置文件格式 (config.yaml):
 # scheduler:

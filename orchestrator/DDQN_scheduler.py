@@ -5,7 +5,7 @@ import random
 import logging
 
 class DDQNScheduler:
-    def __init__(self, node_controller, config):
+    def __init__(self, node_controller, config = {}):
         """
         初始化 DDQN 调度器。
 
