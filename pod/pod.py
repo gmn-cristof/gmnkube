@@ -6,13 +6,23 @@ from etcd.etcd_client import EtcdClient  # 假设有一个 etcd 客户端类
 containerRuntime = ContainerRuntime()
 
 class Pod:
-    def __init__(self, name: str, containers: list = [Container], namespace: str = 'default', volumes=None):
+    def __init__(self, name: str, containers: list = None, namespace: str = 'default', volumes=None):
         self.name = name
         self.namespace = namespace
-        self.containers = containers  # List of Container objects
+        self.containers = containers or [Container]  # List of Container objects
         self.volumes = volumes or {}
         self.status = 'Pending'
         self.etcd_client = EtcdClient()  # 初始化 etcd 客户端
+        
+    def to_dict(self):
+        """将 Pod 对象转换为字典格式."""
+        return {
+            'name': self.name,
+            'namespace': self.namespace,
+            'containers': [container.to_dict() for container in self.containers],
+            'volumes': self.volumes,
+            'status': self.status
+        }
 
     def start(self):
         """Start all containers in the Pod and update etcd status"""

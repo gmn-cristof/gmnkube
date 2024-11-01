@@ -106,7 +106,7 @@ class Node:
             "allocated_net": self.allocated_net,
             "cpu_usage_ratio": self.allocated_cpu / self.total_cpu if self.total_cpu > 0 else 0,
             "memory_usage_ratio": self.allocated_memory / self.total_memory if self.total_memory > 0 else 0,
-            "pods": [pod.name for pod in self.pods],
+            "pods": [pod.to_dict() for pod in self.pods],
             "status": self.status,
             "labels": self.labels,
             "annotations": self.annotations,
