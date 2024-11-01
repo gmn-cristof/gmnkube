@@ -2,7 +2,7 @@ import logging
 import yaml
 from .pod import Pod
 from container.container import Container
-from etcd.etcd_client import EtcdClient  # 假设有 etcd 客户端类
+from etcd.etcd_client import EtcdClient  
 
 class PodController:
     def __init__(self, etcd_host='localhost', etcd_port=2379):

@@ -25,7 +25,7 @@ class Node:
         self.allocated_gpu = 0
         self.allocated_io = 0
         self.allocated_net = 0
-        self.pods = []
+        self.pods = [Pod]
         self.status = "Ready"
         self.etcd_client = EtcdClient()
 
@@ -45,9 +45,17 @@ class Node:
             self.allocated_io += required_io
             self.allocated_net += required_net
             self._log_resource_warning()
-            logging.info(f"Pod {pod.name} scheduled on Node {self.name}.")
-            # 同步状态至 etcd
-            self.etcd_client.put(f"/nodes/{self.name}/pods/{pod.name}", "Running")
+            #TODO：尝试启动pod，若启动失败则重新尝试
+            try:
+                pod.start()
+                self.pods[name] = pod
+                # 将 Pod 状态同步到 etcd
+                self.etcd_client.put(f"/pods/{namespace}/{name}/status", "Running")
+                logging.info(f"Pod '{name}' created successfully with containers: {[c.name for c in containers]}.")
+                logging.info(f"Pod {pod.name} scheduled on Node {self.name}.")
+            except Exception as e:
+                logging.error(f"Failed to create Pod '{name}': {e}")
+                raise
         else:
             logging.error(f"Not enough resources on Node {self.name} to schedule Pod {pod.name}.")
             raise Exception(f"Not enough resources on Node {self.name} to schedule Pod {pod.name}.")
