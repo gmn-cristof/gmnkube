@@ -1,11 +1,12 @@
 import logging
 from node.node_controller import NodeController
+from pod.pod import Pod
 
 # 配置 logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class Kube_Scheduler_Plus:
-    def __init__(self, node_controller, weights=None):
+    def __init__(self, node_controller : NodeController, weights=None):
         """
         初始化 KubeSchedulerPlus，连接 etcd 并加载节点信息。
         :param etcd_host: etcd 主机
@@ -53,7 +54,7 @@ class Kube_Scheduler_Plus:
         """对可用节点进行优选。"""
         return sorted(available_nodes, key=self.calculate_score)
 
-    def schedule_pod(self, pod_name: str, required_resources):
+    def schedule_pod(self, pod : Pod, required_resources):
         """为 Pod 选择合适的节点。"""
         available_nodes = self.filter_nodes(required_resources)
         if not available_nodes:
@@ -62,8 +63,8 @@ class Kube_Scheduler_Plus:
 
         prioritized_nodes = self.prioritize_nodes(available_nodes)
         selected_node = prioritized_nodes[0]
-        logging.info(f"Scheduled Pod {pod_name} on node {selected_node['name']}.")
-        self.node_controller.schedule_pod_to_node(pod_name, selected_node['name'])
+        logging.info(f"Scheduled Pod {pod.name} on node {selected_node['name']}.")
+        self.node_controller.schedule_pod_to_node(pod, selected_node['name'])
   
 
 # 示例配置文件格式 (config.yaml):
