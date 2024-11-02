@@ -17,7 +17,7 @@ kube_scheduler = Kube_Scheduler_Plus(node_controller)
 
 def configure_routes(app):
     # 容器相关路由
-    @app.route('/containers', methods=['POST'])
+    @app.route('/containers/post', methods=['POST'])
     async def create_container(request: Request):
         data = request.json
         image = data.get('image')
@@ -40,7 +40,7 @@ def configure_routes(app):
         except Exception as e:
             return response.json({'error': str(e)}, status=500)
 
-    @app.route('/containers', methods=['GET'])
+    @app.route('/containers/get', methods=['GET'])
     async def list_containers(request: Request):
         try:
             containers = container_manager.list_containers()
@@ -80,7 +80,7 @@ def configure_routes(app):
         except Exception as e:
             return response.json({'error': str(e)}, status=500)
 
-    @app.route('/containers/<name>', methods=['DELETE'])
+    @app.route('/containers/remove/<name>', methods=['DELETE'])
     async def remove_container(request: Request, name: str):
         try:
             container_runtime.remove_container(name)

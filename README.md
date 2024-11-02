@@ -21,6 +21,12 @@ This project is a Python-based container control engine built on top of containe
 ## Develop Environment
 - visual studio code (remote connected with wsl Ubuntu)
 - WSl Ubuntu 23.04
+- containerd
+- 
 - python 3.11
 - gcc g++ 13.1.0
-- 
+- python vertual environment：{
+    sanic
+    pip
+    tenserflow
+}

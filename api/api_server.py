@@ -1,5 +1,5 @@
 from sanic import Sanic
-from .routes import configure_routes
+from api.routes import configure_routes
 
 # 初始化 Sanic 应用
 app = Sanic("ContainerAPI")
