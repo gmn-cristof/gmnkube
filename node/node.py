@@ -86,7 +86,7 @@ class Node:
             # 尝试启动 Pod
             try:
                 pod.start()  # 启动 Pod
-                self.pods[name] = pod  # 将 Pod 添加到字典中
+                self.pods[pod.name] = pod  # 将 Pod 添加到字典中
                 # 将 Pod 状态同步到 etcd
                 self.etcd_client.put(f"/pods/{pod.namespace}/{pod.name}/status", "Running")
                 logging.info(f"Pod '{pod.name}' created successfully with containers: {[c.name for c in pod.containers]}.")
