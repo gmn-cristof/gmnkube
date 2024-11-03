@@ -1,7 +1,7 @@
 import logging
 from .node import Node
 from pod.pod import Pod
-from etcd.etcd_client import EtcdClient
+#from etcd.etcd_client import EtcdClient
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

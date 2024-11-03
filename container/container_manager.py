@@ -1,6 +1,6 @@
 import subprocess
 import logging
-from etcd.etcd_client import EtcdClient  # 假设你有一个 etcd 客户端类
+#from etcd.etcd_client import EtcdClient  # 假设你有一个 etcd 客户端类
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

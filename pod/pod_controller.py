@@ -96,7 +96,6 @@ class PodController:
     def start_pod(self, name: str):
         """Starts a Pod and updates etcd status"""
         pod = self.pods.get(name)
-        pod.start()
         if not pod:
             logging.error(f"Pod '{name}' not found.")
             raise ValueError(f"Pod '{name}' not found.")

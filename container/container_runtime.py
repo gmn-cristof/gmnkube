@@ -1,6 +1,6 @@
 import subprocess
 import logging
-from etcd.etcd_client import EtcdClient  
+#from etcd.etcd_client import EtcdClient  
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
