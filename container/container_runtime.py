@@ -6,8 +6,8 @@ from etcd.etcd_client import EtcdClient
 logging.basicConfig(level=logging.INFO)
 
 class ContainerRuntime:
-    def __init__(self):
-        self.etcd_client = EtcdClient()  # 初始化 etcd 客户端
+    def __init__(self, etcd_client):
+        self.etcd_client = etcd_client  # 初始化 etcd 客户端
 
     def start_container(self, name: str):
         """Starts a container and updates etcd status."""

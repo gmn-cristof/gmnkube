@@ -3,13 +3,13 @@ from container.container_runtime import ContainerRuntime
 from container.container import Container
 from etcd.etcd_client import EtcdClient  # 假设有一个 etcd 客户端类
 
-containerRuntime = ContainerRuntime()
+containerRuntime = ContainerRuntime(EtcdClient())
 
 class Pod:
     def __init__(self, name: str, containers: list = None, namespace: str = 'default', volumes=None):
         self.name = name
         self.namespace = namespace
-        self.containers = containers or [Container]  # List of Container objects
+        self.containers = containers or []  # List of Container objects
         self.volumes = volumes or {}
         self.status = 'Pending'
         self.etcd_client = EtcdClient()  # 初始化 etcd 客户端

@@ -6,8 +6,8 @@ from etcd.etcd_client import EtcdClient  # 假设你有一个 etcd 客户端类
 logging.basicConfig(level=logging.INFO)
 
 class ContainerManager:
-    def __init__(self):
-        self.etcd_client = EtcdClient()  # 初始化 etcd 客户端
+    def __init__(self, etcd_client):
+        self.etcd_client = etcd_client  # 初始化 etcd 客户端
 
     def create_container(self, image: str, name: str):
         """Creates a container using containerd and updates etcd"""

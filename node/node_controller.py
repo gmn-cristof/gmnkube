@@ -1,15 +1,16 @@
 import logging
 from .node import Node
+from pod.pod import Pod
 from etcd.etcd_client import EtcdClient
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class NodeController:
-    def __init__(self, etcd_host='localhost', etcd_port=2379):
+    def __init__(self, etcd_client):
         """初始化 NodeController，管理多个节点的操作，并连接 etcd 服务."""
         self.nodes = {}
-        self.etcd_client = EtcdClient(host=etcd_host, port=etcd_port)
+        self.etcd_client = etcd_client
 
     def add_node(self, name, ip_adress, total_cpu, total_memory, total_gpu=0, total_io=0, total_net=0, labels=None, annotations=None):
         """添加一个新的节点，并在 etcd 中保存其信息.

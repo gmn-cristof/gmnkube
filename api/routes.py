@@ -1,17 +1,29 @@
-from sanic import response
+from sanic import Sanic, response
 from sanic.request import Request
+from node.node import Node
+from pod.pod import Pod
+from container.container import Container
+from etcd.etcd_client import EtcdClient
 from container.container_manager import ContainerManager
+from container.container_runtime import ContainerRuntime
 from pod.pod_controller import PodController
 from container.image_handler import ImageHandler
 from node.node_controller import NodeController
 from orchestrator.DDQN_scheduler import DDQNScheduler
 from orchestrator.kube_scheduler_plus import Kube_Scheduler_Plus
+from sanic_cors import CORS
+
+
+app = Sanic(__name__)
+CORS(app)
 
 # 初始化各个控制器
-container_manager = ContainerManager()
+etcd_client = EtcdClient()
+container_manager = ContainerManager(etcd_client)
+container_runtime = ContainerRuntime(etcd_client)
 image_handler = ImageHandler()
-pod_controller = PodController()
-node_controller = NodeController()
+pod_controller = PodController(etcd_client)
+node_controller = NodeController(etcd_client)
 ddqn_scheduler = DDQNScheduler(node_controller)
 kube_scheduler = Kube_Scheduler_Plus(node_controller)
 
@@ -31,6 +43,21 @@ def configure_routes(app):
             return response.json({'message': f"Container '{name}' created successfully."}, status=201)
         except Exception as e:
             return response.json({'error': str(e)}, status=500)
+        # {
+        #   "name": "busybox-container",
+        #   "image": "busybox",
+        #   "command": ["sh", "-c", "sleep 3600"],
+        #   "resources": {
+        #     "requests": {
+        #       "cpu": "50m",
+        #       "memory": "128Mi"
+        #     },
+        #     "limits": {
+        #       "cpu": "100m",
+        #       "memory": "256Mi"
+        #     }
+        #   }
+        # }
 
     @app.route('/containers/<name>', methods=['DELETE'])
     async def delete_container(request: Request, name: str):
@@ -72,30 +99,6 @@ def configure_routes(app):
         except Exception as e:
             return response.json({'error': str(e)}, status=500)
 
-    @app.route('/containers', methods=['GET'])
-    async def list_containers(request: Request):
-        try:
-            containers = container_runtime.list_containers()
-            return response.json({'containers': containers}, status=200)
-        except Exception as e:
-            return response.json({'error': str(e)}, status=500)
-
-    @app.route('/containers/remove/<name>', methods=['DELETE'])
-    async def remove_container(request: Request, name: str):
-        try:
-            container_runtime.remove_container(name)
-            return response.json({'message': f"Container '{name}' removed successfully."}, status=200)
-        except Exception as e:
-            return response.json({'error': str(e)}, status=500)
-
-    @app.route('/containers/<name>/inspect', methods=['GET'])
-    async def inspect_container(request: Request, name: str):
-        try:
-            container_info = container_runtime.inspect_container(name)
-            return response.json({'container_info': container_info}, status=200)
-        except Exception as e:
-            return response.json({'error': str(e)}, status=500)
-
     # 镜像相关路由
     @app.route('/images/pull', methods=['POST'])
     async def pull_image(request: Request):
@@ -132,19 +135,51 @@ def configure_routes(app):
     # Pod 相关路由
     @app.route('/pods', methods=['POST'])
     async def create_pod(request: Request):
-        data = request.json
+        data = await request.json()  # Ensure we're awaiting the JSON parsing
         try:
-            name = data.get("name")
-            containers = data.get("containers")
-            namespace = data.get("namespace", "default")
+            metadata = data.get("metadata")
+            spec = data.get("spec")
+            name = metadata.get("name")
+            namespace = metadata.get("namespace", "default")
+            
+            # Create a list to hold Container objects
+            containers = []
+
+            # Iterate through each container definition in the JSON
+            for container_data in spec.get("containers", []):
+                container_name = container_data.get("name")
+                container_image = container_data.get("image")
+                container_command = container_data.get("command")
+                container_ports = container_data.get("ports", [])
+                container_resources = container_data.get("resources", {})
+
+                # Extract port numbers for the Container class
+                ports = [port['containerPort'] for port in container_ports] if container_ports else []
+
+                # Create a Container object
+                container = Container(
+                    name=container_name,
+                    image=container_image,
+                    command=container_command,
+                    resources=container_resources,
+                    ports=ports
+                )
+                containers.append(container)
+
+            # Call the pod controller to create the pod
             pod_controller.create_pod(name, containers, namespace)
+
             return response.json({'message': f"Pod '{name}' created successfully."}, status=201)
         except Exception as e:
             return response.json({'error': str(e)}, status=500)
 
+
+
+
     @app.route('/pods/yaml', methods=['POST'])
     async def create_pod_from_yaml(request: Request):
         yaml_file = request.json.get("yaml_file")
+        #print(yaml_file)
         try:
             pod_controller.create_pod_from_yaml(yaml_file)
             return response.json({'message': f"Pod created from YAML '{yaml_file}' successfully."}, status=201)
@@ -180,6 +215,14 @@ def configure_routes(app):
         try:
             pod_controller.stop_pod(name)
             return response.json({'message': f"Pod '{name}' stopped successfully."}, status=200)
+        except Exception as e:
+            return response.json({'error': str(e)}, status=500)
+        
+    @app.route('/pods/<name>/start', methods=['POST'])
+    async def start_pod(request: Request, name: str):
+        try:
+            pod_controller.start_pod(name)
+            return response.json({'message': f"Pod '{name}' started successfully."}, status=200)
         except Exception as e:
             return response.json({'error': str(e)}, status=500)
 
@@ -236,112 +279,36 @@ def configure_routes(app):
             return response.json({'error': str(e)}, status=500)
 
     @app.route('/nodes/<name>/schedule', methods=['POST'])
-    async def schedule_pod(request: Request, name: str):
+    async def schedule_pod_on_node(request: Request, name: str):
         data = request.json
+        pod_name = data.get('pod_name')
         try:
-            pod = data['pod']  # 假设 pod 是一个对象或字典
-            node_controller.schedule_pod_to_node(pod, name)
-            return response.json({'message': f"Pod scheduled to node '{name}'."}, status=200)
+            pod_controller.schedule_pod_to_node(pod_name, name)
+            return response.json({'message': f"Pod '{pod_name}' scheduled to Node '{name}' successfully."}, status=200)
         except Exception as e:
             return response.json({'error': str(e)}, status=500)
 
-    @app.route('/nodes/<name>/remove_pod', methods=['POST'])
-    async def remove_pod(request: Request, name: str):
-        data = request.json
+    # DDQN 调度相关路由
+    @app.route('/ddqn/schedule', methods=['POST'])
+    async def ddqn_schedule(request: Request):
+        pod_name = request.json.get('pod_name')
         try:
-            pod = data['pod']  # 假设 pod 是一个对象或字典
-            node_controller.remove_pod_from_node(pod, name)
-            return response.json({'message': f"Pod removed from node '{name}'."}, status=200)
+            node_name = ddqn_scheduler.schedule_pod(pod_name)
+            return response.json({'message': f"Pod '{pod_name}' scheduled to Node '{node_name}' using DDQN."}, status=200)
         except Exception as e:
             return response.json({'error': str(e)}, status=500)
 
-    @app.route('/nodes/<name>/status', methods=['PATCH'])
-    async def update_node_status(request: Request, name: str):
-        data = request.json
-        try:
-            status = data['status']
-            node_controller.update_node_status(name, status)
-            return response.json({'message': f"Node '{name}' status updated to '{status}'."}, status=200)
-        except Exception as e:
-            return response.json({'error': str(e)}, status=500)
-        
-    #DDQN调度器相关：
-    @app.route('/DDQN/schedule', methods=['POST'])
-    async def schedule_pod(request: Request):
-        data = request.json
-        try:
-            pod = data['pod']  # 假设 pod 是一个对象或字典
-            ddqn_scheduler.schedule_pod(pod)
-            return response.json({'message': f"Pod '{pod['name']}' scheduled successfully."}, status=200)
-        except Exception as e:
-            return response.json({'error': str(e)}, status=500)
-
-    @app.route('/DDQN/scheduler/state', methods=['GET'])
-    async def get_scheduler_state(request: Request):
-        """获取当前调度器状态（例如，epsilon 值等）。"""
-        try:
-            state = {
-                'epsilon': ddqn_scheduler.epsilon,
-                'memory_size': len(ddqn_scheduler.memory)
-            }
-            return response.json({'scheduler_state': state}, status=200)
-        except Exception as e:
-            return response.json({'error': str(e)}, status=500)
-
-    @app.route('/DDQN/scheduler/update', methods=['POST'])
-    async def update_scheduler_config(request: Request):
-        """更新调度器的配置，例如学习率、epsilon 等。"""
-        data = request.json
-        try:
-            if 'learning_rate' in data:
-                ddqn_scheduler.learning_rate = data['learning_rate']
-                ddqn_scheduler.model.compile(loss='mse', optimizer=tf.keras.optimizers.Adam(learning_rate=ddqn_scheduler.learning_rate))
-            
-            if 'gamma' in data:
-                ddqn_scheduler.gamma = data['gamma']
-            
-            return response.json({'message': "Scheduler configuration updated successfully."}, status=200)
-        except Exception as e:
-            return response.json({'error': str(e)}, status=500)
-
-    @app.route('/DDQN/scheduler/memory', methods=['GET'])
-    async def get_memory_size(request: Request):
-        """获取当前记忆的大小。"""
-        try:
-            memory_size = len(ddqn_scheduler.memory)
-            return response.json({'memory_size': memory_size}, status=200)
-        except Exception as e:
-            return response.json({'error': str(e)}, status=500)
-        
-    #kube_schedule相关
+    # Kube Scheduler 调度相关路由
     @app.route('/kube/schedule', methods=['POST'])
-    async def schedule_pod(request: Request):
-        data = request.json
+    async def kube_schedule(request: Request):
+        pod_name = request.json.get('pod_name')
         try:
-            pod_name = data['pod_name']  # 假设 pod_name 是一个字符串
-            required_resources = data['required_resources']  # 假设这是一个字典
-            kube_scheduler.schedule_pod(pod_name, required_resources)
-            return response.json({'message': f"Pod '{pod_name}' scheduled successfully."}, status=200)
+            node_name = kube_scheduler.schedule_pod(pod_name)
+            return response.json({'message': f"Pod '{pod_name}' scheduled to Node '{node_name}' using Kube Scheduler."}, status=200)
         except Exception as e:
             return response.json({'error': str(e)}, status=500)
 
-    @app.route('/kube/nodes', methods=['GET'])
-    async def list_nodes(request: Request):
-        """列出所有可用节点的信息。"""
-        try:
-            nodes = node_controller.list_nodes()
-            return response.json({'nodes': nodes}, status=200)
-        except Exception as e:
-            return response.json({'error': str(e)}, status=500)
+configure_routes(app)
 
-    @app.route('/kube/nodes/filter', methods=['POST'])
-    async def filter_nodes(request: Request):
-        """根据所需资源过滤可用节点。"""
-        data = request.json
-        required_resources = data['required_resources']  # 假设这是一个字典
-        try:
-            available_nodes = kube_scheduler.filter_nodes(required_resources)
-            return response.json({'available_nodes': available_nodes}, status=200)
-        except Exception as e:
-            return response.json({'error': str(e)}, status=500)
-
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8001)

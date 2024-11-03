@@ -5,9 +5,9 @@ from container.container import Container
 from etcd.etcd_client import EtcdClient  
 
 class PodController:
-    def __init__(self, etcd_host='localhost', etcd_port=2379):
+    def __init__(self, etcd_client):
         self.pods = {}
-        self.etcd_client = EtcdClient(host=etcd_host, port=etcd_port)
+        self.etcd_client = etcd_client
 
     def create_pod(self, name: str, containers: list, namespace: str = 'default'):
         """Creates a new Pod with a list of containers"""
@@ -17,13 +17,13 @@ class PodController:
 
         pod = Pod(name=name, containers=containers, namespace=namespace)
         try:
-            pod.start()
+            #pod.start()
             self.pods[name] = pod
             # 将 Pod 状态同步到 etcd
-            self.etcd_client.put(f"/pods/{namespace}/{name}/status", "Running")
+            self.etcd_client.put(f"/pods/{namespace}/{name}/status", "Created")
             logging.info(f"Pod '{name}' created successfully with containers: {[c.name for c in containers]}.")
         except Exception as e:
-            logging.error(f"Failed to create Pod '{name}': {e}")
+            logging.error(f"Failed to create Pod '{name}'. Containers: {containers}. Error: {e}")
             raise
 
     def create_pod_from_yaml(self, yaml_file: str):
@@ -45,8 +45,10 @@ class PodController:
                     ports=c.get('ports', [])
                 ) for c in pod_config['spec']['containers']
             ]
-
             self.create_pod(name, containers, namespace)
+
+        except Exception as e:
+            print(f"Failed to create Pod '{name}': {str(e)}")
         
         except FileNotFoundError:
             logging.error(f"YAML file '{yaml_file}' not found.")
@@ -90,6 +92,24 @@ class PodController:
         pod_list = list(self.pods.keys())
         logging.info(f"Listing all pods: {pod_list}")
         return pod_list
+
+    def start_pod(self, name: str):
+        """Starts a Pod and updates etcd status"""
+        pod = self.pods.get(name)
+        pod.start()
+        if not pod:
+            logging.error(f"Pod '{name}' not found.")
+            raise ValueError(f"Pod '{name}' not found.")
+
+        try:
+            pod.start()
+            # 更新 etcd 中的 Pod 状态
+            self.etcd_client.put(f"/pods/{pod.namespace}/{name}/status", "Running")
+            logging.info(f"Pod '{name}' started successfully.")
+        except Exception as e:
+            logging.error(f"Failed to start Pod '{name}': {e}")
+            raise
+
 
     def stop_pod(self, name: str):
         """Stops a Pod and updates etcd status"""
