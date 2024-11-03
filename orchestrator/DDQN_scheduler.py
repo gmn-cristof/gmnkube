@@ -9,15 +9,15 @@ class DDQNScheduler:
         # 初始化调度器
         self.config = {
             'gamma': 0.95,  # 折扣因子
-            'epsilon': 1.0,  # 探索率
+            'epsilon': 1.0,  # 初始探索率
             'epsilon_min': 0.01,  # 最小探索率
             'epsilon_decay': 0.995,  # 探索率衰减
             'learning_rate': 0.001,  # 学习率
             'batch_size': 4  # 批次大小
         }
         self.node_controller = node_controller  # 节点控制器
-        self.state_size = 6  # 状态大小
-        self.action_size = len(self.node_controller.nodes)  # 动作大小
+        self.state_size = 9  # 状态大小，包含节点和 Pod 的资源信息
+        self.action_size = len(self.node_controller.nodes)  # 动作大小，即节点数量
         self.memory = deque(maxlen=2000)  # 经验回放内存
         self.model = self._build_model()  # 主模型
         self.target_model = self._build_model()  # 目标模型
@@ -87,50 +87,60 @@ class DDQNScheduler:
 
     def schedule_pod(self, pod):
         # 调度 Pod 到节点
-        state = self._get_state()  # 获取当前状态
+        state = self._get_state(pod)  # 获取当前状态，传入 Pod
         action = self.act(state)  # 选择动作
         node_name = self._get_node_from_action(action)  # 根据动作获取节点名称
 
         try:
             # 尝试将 Pod 调度到选定的节点
             self.node_controller.schedule_pod_to_node(pod, node_name)
-            next_state = self._get_state()  # 获取下一个状态
-            reward = self._calculate_reward(node_name)  # 计算奖励
+            next_state = self._get_state(pod)  # 获取下一个状态
+            reward = self._calculate_reward(node_name, pod)  # 计算奖励
             done = False  # 结束标志
             self.remember(state, action, reward, next_state, done)  # 记住经历
             self.replay()  # 进行回放训练
         except Exception as e:
             logging.error(f"Failed to schedule Pod {pod.name} to Node {node_name}: {e}")  # 记录错误
 
-    def _get_state(self):
-        # 获取当前系统状态
+    def _get_state(self, pod):
+        # 获取当前系统状态，并加入 Pod 的资源需求
         states = []
         for node in self.node_controller.nodes.values():
             states.append([
-                node.allocated_cpu,  # 已分配 CPU
-                node.allocated_memory,  # 已分配内存
-                node.allocated_gpu,  # 已分配 GPU
-                node.total_gpu - node.allocated_gpu,  # 剩余 GPU
-                node.total_cpu - node.allocated_cpu,  # 剩余 CPU
-                node.total_memory - node.allocated_memory  # 剩余内存
+                node.allocated_cpu,
+                node.allocated_memory,
+                node.allocated_gpu,
+                node.total_cpu - node.allocated_cpu,
+                node.total_memory - node.allocated_memory,
+                node.total_gpu - node.allocated_gpu,
+                pod.resources.get('requests', {}).get('cpu', 0),  # Pod 所需 CPU
+                pod.resources.get('requests', {}).get('memory', 0),  # Pod 所需内存
+                pod.resources.get('requests', {}).get('gpu', 0)   # Pod 所需 GPU
             ])
-        return np.array(states).reshape(1, -1)  # 返回状态数组
+        return np.array(states).reshape(1, -1)
 
     def _get_node_from_action(self, action):
         # 根据动作获取节点名称
         node_names = list(self.node_controller.nodes.keys())
         return node_names[action]
 
-    def _calculate_reward(self, node_name):
+    def _calculate_reward(self, node_name, pod):
         # 计算调度到指定节点的奖励
         node = self.node_controller.get_node(node_name)  # 获取节点信息
         if node.status == "Ready":  # 如果节点状态为就绪
+            # 检查节点是否能满足 Pod 的资源需求
+            if (node.total_cpu - node.allocated_cpu) < pod.required_cpu or \
+               (node.total_memory - node.allocated_memory) < pod.required_memory or \
+               (node.total_gpu - node.allocated_gpu) < pod.required_gpu:
+                return -1  # 资源不足，给予负奖励
+
             cpu_usage_ratio = node.allocated_cpu / node.total_cpu if node.total_cpu > 0 else 0
             memory_usage_ratio = node.allocated_memory / node.total_memory if node.total_memory > 0 else 0
             gpu_usage_ratio = node.allocated_gpu / node.total_gpu if node.total_gpu > 0 else 0
+            
             reward = 1 - (cpu_usage_ratio + memory_usage_ratio + gpu_usage_ratio) / 3  # 计算基础奖励
 
-            # 计算负载均衡因子
+            # 负载均衡因子
             cpu_utilizations = [n.allocated_cpu / n.total_cpu if n.total_cpu > 0 else 0 for n in self.node_controller.nodes.values()]
             memory_utilizations = [n.allocated_memory / n.total_memory if n.total_memory > 0 else 0 for n in self.node_controller.nodes.values()]
             gpu_utilizations = [n.allocated_gpu / n.total_gpu if n.total_gpu > 0 else 0 for n in self.node_controller.nodes.values()]
@@ -144,3 +154,4 @@ class DDQNScheduler:
 
             return reward  # 返回计算的奖励
         return -1  # 如果节点不就绪，返回惩罚
+

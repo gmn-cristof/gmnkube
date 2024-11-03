@@ -20,7 +20,10 @@ class Container:
         self.name = name
         self.image = image
         self.command =command or []
-        self.resources = resources or {}
+        self.resources = {
+            'requests': {},
+            'limits': {}
+        }
         self.ports = ports or []
         self.etcd_client = etcd_client or EtcdClient()  # 初始化 Etcd 客户端
         self.sync_to_etcd()  # 同步初始状态到 etcd
@@ -30,6 +33,7 @@ class Container:
         return {
             "name": self.name,
             "image": self.image,
+            "command": self.command,
             "resources": self.resources,
             "ports": self.ports,
         }

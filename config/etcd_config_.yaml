@@ -1,0 +1,42 @@
+name: 'etcd-node-1'  # 节点名称
+data-dir: '/var/lib/etcd/etcd-node-1'  # 数据存储目录
+listen-client-urls: 'http://192.168.1.101:2379'  # 客户端监听地址
+advertise-client-urls: 'http://192.168.1.101:2379'  # 客户端广告地址
+listen-peer-urls: 'http://192.168.1.101:2380'  # 节点间通信地址
+initial-advertise-peer-urls: 'http://192.168.1.101:2380'  # 节点对外的通信地址
+initial-cluster: 'etcd-node-1=http://192.168.1.101:2380,etcd-node-2=http://192.168.1.102:2380,etcd-node-3=http://192.168.1.103:2380'  # 集群初始化
+initial-cluster-state: 'new'  # 集群状态，'new' 或 'existing'
+heartbeat-interval: 100  # 心跳间隔（毫秒）
+election-timeout: 1000  # 选举超时（毫秒）
+snapshot-count: 10000  # 快照记录数量
+
+name: 'etcd-node-2'  # 节点名称
+data-dir: '/var/lib/etcd/etcd-node-2'  # 数据存储目录
+listen-client-urls: 'http://192.168.1.102:2379'  # 客户端监听地址
+advertise-client-urls: 'http://192.168.1.102:2379'  # 客户端广告地址
+listen-peer-urls: 'http://192.168.1.102:2380'  # 节点间通信地址
+initial-advertise-peer-urls: 'http://192.168.1.102:2380'  # 节点对外的通信地址
+initial-cluster: 'etcd-node-1=http://192.168.1.101:2380,etcd-node-2=http://192.168.1.102:2380,etcd-node-3=http://192.168.1.103:2380'  # 集群初始化
+initial-cluster-state: 'new'  # 集群状态，'new' 或 'existing'
+heartbeat-interval: 100  # 心跳间隔（毫秒）
+election-timeout: 1000  # 选举超时（毫秒）
+snapshot-count: 10000  # 快照记录数量
+
+name: 'etcd-node-3'  # 节点名称
+data-dir: '/var/lib/etcd/etcd-node-3'  # 数据存储目录
+listen-client-urls: 'http://192.168.1.103:2379'  # 客户端监听地址
+advertise-client-urls: 'http://192.168.1.103:2379'  # 客户端广告地址
+listen-peer-urls: 'http://192.168.1.103:2380'  # 节点间通信地址
+initial-advertise-peer-urls: 'http://192.168.1.103:2380'  # 节点对外的通信地址
+initial-cluster: 'etcd-node-1=http://192.168.1.101:2380,etcd-node-2=http://192.168.1.102:2380,etcd-node-3=http://192.168.1.103:2380'  # 集群初始化
+initial-cluster-state: 'new'  # 集群状态，'new' 或 'existing'
+heartbeat-interval: 100  # 心跳间隔（毫秒）
+election-timeout: 1000  # 选举超时（毫秒）
+snapshot-count: 10000  # 快照记录数量
+
+etcd --config-file /path/to/etcd-node-1.yaml
+etcd --config-file /path/to/etcd-node-2.yaml
+etcd --config-file /path/to/etcd-node-3.yaml
+
+
+

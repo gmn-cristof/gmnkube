@@ -7,12 +7,15 @@ import GPUtil
 
 
 class Node:
-    def __init__(self, name, ip_adress, total_cpu, total_memory, total_gpu=0, total_io=0, total_net=0, labels=None, annotations=None):
+    def __init__(self, name, ip_address, total_cpu=None, total_memory=None, total_gpu=0, total_io=0, total_net=0, labels=None, annotations=None):
         """
         初始化 Node 对象。
         """
+        if total_cpu is None or total_memory is None:
+            total_cpu, total_memory = self._fetch_resource_info()
+
         self.name = name
-        self.ip_adress = ip_adress
+        self.ip_address = ip_address
         self.total_cpu = total_cpu
         self.total_memory = total_memory
         self.total_gpu = total_gpu
@@ -25,55 +28,96 @@ class Node:
         self.allocated_gpu = 0
         self.allocated_io = 0
         self.allocated_net = 0
-        self.pods = [Pod]
+        self.pods = []
         self.status = "Ready"
         self.etcd_client = EtcdClient()
 
+    def _fetch_resource_info(self):
+        """
+        获取系统资源信息，包括 CPU、内存、GPU、IO 和网络总量。
+        """
+        total_cpu = psutil.cpu_count(logical=True)  # 获取逻辑 CPU 数量
+        total_memory = psutil.virtual_memory().total  # 获取总内存
+        total_gpu = len(GPUtil.getGPUs())  # 获取 GPU 数量
+        total_io = self._get_total_io()  # 自定义方法获取 IO 信息
+        total_net = self._get_total_net()  # 自定义方法获取网络信息
+
+        return total_cpu, total_memory, total_gpu, total_io, total_net
+
+    def _get_total_io(self):
+        """
+        获取系统总 IO 信息（可以根据具体需求修改）。
+        """
+        # 示例：获取当前磁盘 IO 读写速率
+        io_stats = psutil.disk_io_counters()
+        total_io = io_stats.read_bytes + io_stats.write_bytes
+        return total_io
+
+    def _get_total_net(self):
+        """
+        获取系统总网络信息（可以根据具体需求修改）。
+        """
+        # 示例：获取所有网络接口的字节数
+        net_io = psutil.net_io_counters()
+        total_net = net_io.bytes_sent + net_io.bytes_recv
+        return total_net
+    
     def add_pod(self, pod):
-        """在节点上运行一个新的 Pod，并更新资源分配。"""
-        required_cpu = pod.resources.get("cpu", 0)
-        required_memory = pod.resources.get("memory", 0)
-        required_gpu = pod.resources.get("gpu", 0)
-        required_io = pod.resources.get("io", 0)
-        required_net = pod.resources.get("net", 0)
+        """在节点上运行一个新的 Pod，并更新资源分配。
+
+        :param pod: 要添加的 Pod 对象
+        """
+        required_cpu = pod.resources.get("requests", {}).get("cpu", 0)
+        required_memory = pod.resources.get("requests", {}).get("memory", 0)
+        required_gpu = pod.resources.get("requests", {}).get("gpu", 0)
+        required_io = pod.resources.get("requests", {}).get("io", 0)
+        required_net = pod.resources.get("requests", {}).get("net", 0)
 
         if self.can_schedule(required_cpu, required_memory, required_gpu, required_io, required_net):
-            self.pods.append(pod)
+            self.pods.append(pod)  # 添加 Pod 到节点
+            # 更新已分配的资源
             self.allocated_cpu += required_cpu
             self.allocated_memory += required_memory
             self.allocated_gpu += required_gpu
             self.allocated_io += required_io
             self.allocated_net += required_net
             self._log_resource_warning()
-            #TODO：尝试启动pod，若启动失败则重新尝试
+
+            # 尝试启动 Pod
             try:
-                pod.start()
-                self.pods[name] = pod
+                pod.start()  # 启动 Pod
+                self.pods[name] = pod  # 将 Pod 添加到字典中
                 # 将 Pod 状态同步到 etcd
-                self.etcd_client.put(f"/pods/{namespace}/{name}/status", "Running")
-                logging.info(f"Pod '{name}' created successfully with containers: {[c.name for c in containers]}.")
+                self.etcd_client.put(f"/pods/{pod.namespace}/{pod.name}/status", "Running")
+                logging.info(f"Pod '{pod.name}' created successfully with containers: {[c.name for c in pod.containers]}.")
                 logging.info(f"Pod {pod.name} scheduled on Node {self.name}.")
             except Exception as e:
-                logging.error(f"Failed to create Pod '{name}': {e}")
+                logging.error(f"Failed to create Pod '{pod.name}': {e}")
                 raise
         else:
             logging.error(f"Not enough resources on Node {self.name} to schedule Pod {pod.name}.")
             raise Exception(f"Not enough resources on Node {self.name} to schedule Pod {pod.name}.")
 
     def remove_pod(self, pod):
-        """从节点上移除一个 Pod，并释放相应资源。"""
+        """从节点上移除一个 Pod，并释放相应资源。
+
+        :param pod: 要移除的 Pod 对象
+        """
         if pod in self.pods:
-            self.pods.remove(pod)
-            self.allocated_cpu -= pod.resources.get("cpu", 0)
-            self.allocated_memory -= pod.resources.get("memory", 0)
-            self.allocated_gpu -= pod.resources.get("gpu", 0)
-            self.allocated_io -= pod.resources.get("io", 0)
-            self.allocated_net -= pod.resources.get("net", 0)
+            self.pods.remove(pod)  # 从节点中移除 Pod
+            # 释放相应资源
+            self.allocated_cpu -= pod.resources.get("requests", {}).get("cpu", 0)
+            self.allocated_memory -= pod.resources.get("requests", {}).get("memory", 0)
+            self.allocated_gpu -= pod.resources.get("requests", {}).get("gpu", 0)
+            self.allocated_io -= pod.resources.get("requests", {}).get("io", 0)
+            self.allocated_net -= pod.resources.get("requests", {}).get("net", 0)
+
             logging.info(f"Pod {pod.name} removed from Node {self.name}.")
             # 更新 etcd 中的节点状态
             self.etcd_client.delete(f"/nodes/{self.name}/pods/{pod.name}")
         else:
             logging.warning(f"Attempted to remove non-existent Pod {pod.name} from Node {self.name}.")
+
 
     def can_schedule(self, required_cpu, required_memory, required_gpu, required_io, required_net):
         """检查节点是否有足够的资源调度 Pod。"""
