@@ -1,189 +1,288 @@
-import unittest
+import pytest
 from sanic import Sanic
 from sanic_testing import SanicTestManager
-from sanic.response import json
-from api.routes import configure_routes
+from api.api_server_master import configure_routes  # 替换为您实际的模块
+from node.node_controller import NodeController
+from pod.pod_controller import PodController
 
+# 初始化测试应用
+app = Sanic("TestApp")
+configure_routes(app)
 
+@pytest.fixture
+def test_client():
+    return SanicTestManager(app)
 
-class TestAPIServer(unittest.TestCase):
-    def setUp(self):
-        """初始化测试应用程序和路由"""
-        self.app = Sanic("TestApp")
-        configure_routes(self.app)
-        self.manager = Manager(self.app)
+def test_add_node(test_client):
+    """测试添加节点的路由"""
+    response = test_client.post("/nodes", json={
+        "name": "test-node",
+        "ip_address": "192.168.1.1",
+        "total_cpu": 4,
+        "total_memory": 8192,
+        "total_gpu": 1,  # 添加 GPU 资源
+    })
+    assert response.status == 201
+    assert response.json["message"] == "Node added successfully."
 
-    def test_create_container(self):
-        """测试创建容器路由"""
-        response = self.manager.post('/containers', json={'image': 'test_image', 'name': 'test_container'})
-        self.assertEqual(response.status, 201)
-        self.assertIn('message', response.json)
-        self.assertEqual(response.json['message'], 'Container created successfully.')
+def test_add_existing_node(test_client):
+    """测试添加已存在节点的情况"""
+    test_client.post("/nodes", json={
+        "name": "test-node",
+        "ip_address": "192.168.1.1",
+        "total_cpu": 4,
+        "total_memory": 8192,
+        "total_gpu": 1,
+    })
+    response = test_client.post("/nodes", json={
+        "name": "test-node",
+        "ip_address": "192.168.1.1",
+        "total_cpu": 4,
+        "total_memory": 8192,
+        "total_gpu": 1,
+    })
+    assert response.status == 400
+    assert "Node 'test-node' already exists." in response.json["error"]
 
-    def test_delete_container(self):
-        """测试删除容器路由"""
-        response = self.manager.delete('/containers/test_container')
-        self.assertEqual(response.status, 200)
-        self.assertIn('message', response.json)
-        self.assertEqual(response.json['message'], 'Container deleted successfully.')
+def test_list_nodes(test_client):
+    """测试列出节点的路由"""
+    test_client.post("/nodes", json={
+        "name": "test-node",
+        "ip_address": "192.168.1.1",
+        "total_cpu": 4,
+        "total_memory": 8192,
+        "total_gpu": 1,
+    })
+    response = test_client.get("/nodes")
+    assert response.status == 200
+    assert len(response.json["nodes"]) > 0
 
-    def test_list_containers(self):
-        """测试列出所有容器路由"""
-        response = self.manager.get('/containers')
-        self.assertEqual(response.status, 200)
-        self.assertIn('containers', response.json)
-        self.assertIsInstance(response.json['containers'], list)
+def test_create_pod(test_client):
+    """测试创建 Pod 的路由"""
+    test_client.post("/nodes", json={
+        "name": "test-node",
+        "ip_address": "192.168.1.1",
+        "total_cpu": 4,
+        "total_memory": 8192,
+        "total_gpu": 1,
+    })
+    response = test_client.post("/pods", json={
+        "metadata": {"name": "test-pod", "namespace": "default"},
+        "spec": {
+            "containers": [
+                {
+                    "name": "test-container",
+                    "image": "nginx",
+                    "command": ["nginx", "-g", "daemon off;"],
+                    "ports": [{"containerPort": 80}],
+                    "resources": {
+                        "requests": {
+                            "cpu": "100m",
+                            "memory": "256Mi",
+                            "gpu": 1  # 请求 GPU 资源
+                        },
+                        "limits": {
+                            "cpu": "200m",
+                            "memory": "512Mi",
+                            "gpu": 1  # 限制 GPU 资源
+                        },
+                    },
+                }
+            ]
+        }
+    })
+    assert response.status == 201
+    assert "Pod 'test-pod' created successfully." in response.json["message"]
 
-    def test_get_container_info(self):
-        """测试获取容器信息路由"""
-        response = self.manager.get('/containers/test_container')
-        self.assertEqual(response.status, 200)
-        self.assertIn('container_info', response.json)
-        self.assertEqual(response.json['container_info']['name'], 'test_container')
+def test_list_pods(test_client):
+    """测试列出 Pods 的路由"""
+    test_client.post("/nodes", json={
+        "name": "test-node",
+        "ip_address": "192.168.1.1",
+        "total_cpu": 4,
+        "total_memory": 8192,
+        "total_gpu": 1,
+    })
+    test_client.post("/pods", json={
+        "metadata": {"name": "test-pod", "namespace": "default"},
+        "spec": {
+            "containers": [
+                {
+                    "name": "test-container",
+                    "image": "nginx",
+                    "command": ["nginx", "-g", "daemon off;"],
+                    "ports": [{"containerPort": 80}],
+                    "resources": {
+                        "requests": {
+                            "cpu": "100m",
+                            "memory": "256Mi",
+                            "gpu": 1
+                        },
+                        "limits": {
+                            "cpu": "200m",
+                            "memory": "512Mi",
+                            "gpu": 1
+                        },
+                    },
+                }
+            ]
+        }
+    })
+    response = test_client.get("/pods")
+    assert response.status == 200
+    assert len(response.json["pods"]) > 0
 
-    def test_start_container(self):
-        """测试启动容器路由"""
-        response = self.manager.post('/containers/test_container/start')
-        self.assertEqual(response.status, 200)
-        self.assertIn('message', response.json)
-        self.assertEqual(response.json['message'], 'Container started successfully.')
+def test_delete_pod(test_client):
+    """测试删除 Pod 的路由"""
+    test_client.post("/nodes", json={
+        "name": "test-node",
+        "ip_address": "192.168.1.1",
+        "total_cpu": 4,
+        "total_memory": 8192,
+        "total_gpu": 1,
+    })
+    test_client.post("/pods", json={
+        "metadata": {"name": "test-pod", "namespace": "default"},
+        "spec": {
+            "containers": [
+                {
+                    "name": "test-container",
+                    "image": "nginx",
+                    "command": ["nginx", "-g", "daemon off;"],
+                    "ports": [{"containerPort": 80}],
+                    "resources": {
+                        "requests": {
+                            "cpu": "100m",
+                            "memory": "256Mi",
+                            "gpu": 1
+                        },
+                        "limits": {
+                            "cpu": "200m",
+                            "memory": "512Mi",
+                            "gpu": 1
+                        },
+                    },
+                }
+            ]
+        }
+    })
+    response = test_client.delete("/pods/test-pod")
+    assert response.status == 200
+    assert "Pod 'test-pod' deleted successfully." in response.json["message"]
 
-    def test_stop_container(self):
-        """测试停止容器路由"""
-        response = self.manager.post('/containers/test_container/stop')
-        self.assertEqual(response.status, 200)
-        self.assertIn('message', response.json)
-        self.assertEqual(response.json['message'], 'Container stopped successfully.')
+def test_list_pods(test_client):
+    """测试列出 Pod 的路由"""
+    test_client.post("/pods", json={
+        "metadata": {"name": "test-pod", "namespace": "default"},
+        "spec": {
+            "containers": [
+                {
+                    "name": "test-container",
+                    "image": "nginx",
+                }
+            ]
+        }
+    })
+    response = test_client.get("/pods")
+    assert response.status == 200
+    assert len(response.json["pods"]) > 0
 
-    def test_pull_image(self):
-        """测试拉取镜像路由"""
-        response = self.manager.post('/images/pull', json={'image': 'test_image'})
-        self.assertEqual(response.status, 200)
-        self.assertIn('message', response.json)
-        self.assertEqual(response.json['message'], 'Image pulled successfully.')
+def test_start_stop_pod(test_client):
+    """测试启动和停止 Pod 的路由"""
+    test_client.post("/pods", json={
+        "metadata": {"name": "test-pod", "namespace": "default"},
+        "spec": {
+            "containers": [
+                {
+                    "name": "test-container",
+                    "image": "nginx",
+                }
+            ]
+        }
+    })
+    response_start = test_client.post("/pods/test-pod/start")
+    assert response_start.status == 200
+    assert "Pod 'test-pod' started successfully." in response_start.json["message"]
 
-    def test_list_images(self):
-        """测试列出所有镜像路由"""
-        response = self.manager.get('/images')
-        self.assertEqual(response.status, 200)
-        self.assertIn('images', response.json)
-        self.assertIsInstance(response.json['images'], list)
+    response_stop = test_client.post("/pods/test-pod/stop")
+    assert response_stop.status == 200
+    assert "Pod 'test-pod' stopped successfully." in response_stop.json["message"]
 
-    def test_remove_image(self):
-        """测试移除镜像路由"""
-        response = self.manager.delete('/images/remove', json={'image': 'test_image'})
-        self.assertEqual(response.status, 200)
-        self.assertIn('message', response.json)
-        self.assertEqual(response.json['message'], 'Image removed successfully.')
+def test_restart_pod(test_client):
+    """测试重启 Pod 的路由"""
+    test_client.post("/pods", json={
+        "metadata": {"name": "test-pod", "namespace": "default"},
+        "spec": {
+            "containers": [
+                {
+                    "name": "test-container",
+                    "image": "nginx",
+                }
+            ]
+        }
+    })
+    response = test_client.post("/pods/test-pod/restart")
+    assert response.status == 200
+    assert "Pod 'test-pod' restarted successfully." in response.json["message"]
 
-    def test_create_pod(self):
-        """测试创建 Pod 路由"""
-        response = self.manager.post('/pods', json={'name': 'test_pod', 'containers': ['test_container']})
-        self.assertEqual(response.status, 201)
-        self.assertIn('message', response.json)
-        self.assertEqual(response.json['message'], 'Pod created successfully.')
+def test_schedule_pod(test_client):
+    """测试调度 Pod 的路由"""
+    test_client.post("/nodes", json={
+        "name": "test-node",
+        "ip_address": "192.168.1.1",
+        "total_cpu": 4,
+        "total_memory": 8192,
+        "total_gpu": 1,
+        "total_io": 1000,
+        "total_net": 1000
+    })
+    test_client.post("/pods", json={
+        "metadata": {"name": "test-pod", "namespace": "default"},
+        "spec": {
+            "containers": [
+                {
+                    "name": "test-container",
+                    "image": "nginx",
+                }
+            ]
+        }
+    })
+    response = test_client.post("/nodes/test-node/schedule", json={
+        "pod_name": "test-pod"
+    })
+    assert response.status == 200
+    assert "Pod 'test-pod' scheduled to Node 'test-node' successfully." in response.json["message"]
 
-    def test_delete_pod(self):
-        """测试删除 Pod 路由"""
-        response = self.manager.delete('/pods/test_pod')
-        self.assertEqual(response.status, 200)
-        self.assertIn('message', response.json)
-        self.assertEqual(response.json['message'], 'Pod deleted successfully.')
+# DDQN 调度测试
+def test_ddqn_schedule_pod(test_client):
+    """测试 DDQN 调度 Pod 的路由"""
+    test_client.post("/nodes", json={
+        "name": "test-node",
+        "ip_address": "192.168.1.1",
+        "total_cpu": 4,
+        "total_memory": 8192,
+        "total_gpu": 1,
+        "total_io": 1000,
+        "total_net": 1000
+    })
+    response = test_client.post("/DDQN_schedule", json={
+        "metadata": {"name": "ddqn-pod", "namespace": "default"},
+        "spec": {
+            "containers": [
+                {
+                    "name": "ddqn-container",
+                    "image": "nginx",
+                    "resources": {
+                        "requests": {"cpu": "1", "memory": "512Mi","gpu": 0.5},
+                        "limits": {"cpu": "2", "memory": "1Gi","gpu": 0.5},
+                    },
+                }
+            ],
+            "volumes": []
+        }
+    })
+    assert response.status == 200
+    assert "Pod 'ddqn-pod' scheduled successfully." in response.json["message"]
 
-    def test_get_pod(self):
-        """测试获取 Pod 信息路由"""
-        response = self.manager.get('/pods/test_pod')
-        self.assertEqual(response.status, 200)
-        self.assertIn('pod', response.json)
-        self.assertEqual(response.json['pod']['name'], 'test_pod')
-
-    def test_list_pods(self):
-        """测试列出所有 Pod 路由"""
-        response = self.manager.get('/pods')
-        self.assertEqual(response.status, 200)
-        self.assertIn('pods', response.json)
-        self.assertIsInstance(response.json['pods'], list)
-
-    def test_add_node(self):
-        """测试添加节点路由"""
-        response = self.manager.post('/nodes', json={
-            'name': 'test_node',
-            'ip_address': '192.168.0.1',
-            'total_cpu': 4,
-            'total_memory': 16,
-            'total_gpu': 1
-        })
-        self.assertEqual(response.status, 201)
-        self.assertIn('message', response.json)
-        self.assertEqual(response.json['message'], 'Node added successfully.')
-
-    def test_remove_node(self):
-        """测试移除节点路由"""
-        response = self.manager.delete('/nodes/test_node')
-        self.assertEqual(response.status, 200)
-        self.assertIn('message', response.json)
-        self.assertEqual(response.json['message'], 'Node removed successfully.')
-
-    def test_list_nodes(self):
-        """测试列出所有节点路由"""
-        response = self.manager.get('/nodes')
-        self.assertEqual(response.status, 200)
-        self.assertIn('nodes', response.json)
-        self.assertIsInstance(response.json['nodes'], list)
-
-    def test_get_node(self):
-        """测试获取节点信息路由"""
-        response = self.manager.get('/nodes/test_node')
-        self.assertEqual(response.status, 200)
-        self.assertIn('node', response.json)
-        self.assertEqual(response.json['node']['name'], 'test_node')
-
-    def test_schedule_pod(self):
-        """测试在节点上调度 Pod 路由"""
-        response = self.manager.post('/nodes/test_node/schedule', json={'pod': 'test_pod'})
-        self.assertEqual(response.status, 200)
-        self.assertIn('message', response.json)
-        self.assertEqual(response.json['message'], 'Pod scheduled successfully.')
-
-    def test_ddqn_schedule(self):
-        """测试 DDQN 调度路由"""
-        response = self.manager.post('/DDQN/schedule', json={'pod': {'name': 'test_ddqn_pod'}})
-        self.assertEqual(response.status, 200)
-        self.assertIn('message', response.json)
-        self.assertEqual(response.json['message'], 'Pod scheduled with DDQN successfully.')
-
-    def test_get_ddqn_scheduler_state(self):
-        """测试获取 DDQN 调度器状态路由"""
-        response = self.manager.get('/DDQN/scheduler/state')
-        self.assertEqual(response.status, 200)
-        self.assertIn('scheduler_state', response.json)
-
-    def test_update_scheduler_config(self):
-        """测试更新调度器配置路由"""
-        response = self.manager.post('/DDQN/scheduler/update', json={'learning_rate': 0.001})
-        self.assertEqual(response.status, 200)
-        self.assertIn('message', response.json)
-        self.assertEqual(response.json['message'], 'Scheduler configuration updated successfully.')
-
-    def test_get_memory_size(self):
-        """测试获取内存大小路由"""
-        response = self.manager.get('/DDQN/scheduler/memory')
-        self.assertEqual(response.status, 200)
-        self.assertIn('memory_size', response.json)
-
-    def test_kube_schedule(self):
-        """测试 Kubernetes 调度路由"""
-        response = self.manager.post('/kube/schedule', json={'pod_name': 'test_kube_pod', 'required_resources': {'cpu': 2}})
-        self.assertEqual(response.status, 200)
-        self.assertIn('message', response.json)
-        self.assertEqual(response.json['message'], 'Pod scheduled with Kubernetes successfully.')
-
-    def test_filter_nodes(self):
-        """测试节点过滤路由"""
-        response = self.manager.post('/kube/nodes/filter', json={'required_resources': {'cpu': 2}})
-        self.assertEqual(response.status, 200)
-        self.assertIn('available_nodes', response.json)
-        self.assertIsInstance(response.json['available_nodes'], list)
-
-if __name__ == '__main__':
-    unittest.main()
+if __name__ == "__main__":
+    pytest.main()

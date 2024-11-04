@@ -39,6 +39,18 @@ class EtcdClient:
             logger.error(f"Failed to get key {key}: {e}")
             return None
 
+    def get_with_prefix(self, prefix):
+        """根据前缀从 etcd 读取所有键值对"""
+        try:
+            # 将生成器转换为列表
+            values = list(self.client.get_prefix(prefix))
+            logger.info(f"Retrieved values for prefix {prefix}")
+            return values
+        except Exception as e:
+            logger.error(f"Failed to get values with prefix {prefix}: {e}")
+            return []
+
+
     def delete(self, key):
         """从 etcd 删除指定键"""
         try:

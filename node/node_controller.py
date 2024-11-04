@@ -1,6 +1,7 @@
 import logging
 from .node import Node
 from pod.pod import Pod
+import json
 #from etcd.etcd_client import EtcdClient
 
 # 配置日志
@@ -12,10 +13,10 @@ class NodeController:
         self.nodes = {}
         self.etcd_client = etcd_client
 
-    def add_node(self, name, ip_adress, total_cpu, total_memory, total_gpu=0, total_io=0, total_net=0, labels=None, annotations=None):
+    def add_node(self, name, ip_address, total_cpu=0, total_memory=0, total_gpu=0, total_io=0, total_net=0, labels=None, annotations=None):
         """添加一个新的节点，并在 etcd 中保存其信息.
         :param name: 节点名称
-        :param ip_adress: 节点ip地址
+        :param ip_address: 节点ip地址
         :param total_cpu: 节点总 CPU 资源
         :param total_memory: 节点总内存资源
         :param total_gpu: 节点总 GPU 资源（可选）
@@ -28,7 +29,7 @@ class NodeController:
             logging.error(f"Node '{name}' already exists.")
             raise Exception(f"Node '{name}' already exists.")
         
-        node = Node(name, ip_adress, total_cpu, total_memory, total_gpu, total_io, total_net, labels, annotations)
+        node = Node(name, ip_address, total_cpu, total_memory, total_gpu, total_io, total_net, labels, annotations)
         self.nodes[name] = node
 
         # 将节点信息存储到 etcd
@@ -54,10 +55,20 @@ class NodeController:
         :return: 返回所有节点的字典"""
         node_info_list = {}
         try:
-            for node in self.etcd_client.get_prefix("nodes/"):
-                node_info = node.value.decode()  # 处理字节编码
-                node_info_list[node.key.decode().split('/')[-1]] = node_info
-                logging.info(f"Node '{node.key.split('/')[-1]}': {node_info}")
+            logging.info("Attempting to get nodes with prefix 'nodes/'")
+            response = self.etcd_client.get("nodes/", prefix=True)  # 确保使用前缀获取
+            logging.info(f"Response received: {response}")
+
+            if response is None :
+                logging.warning("No nodes found in etcd.")
+                return node_info_list  # 返回空字典
+
+            for node in response.kvs:  # 遍历返回的键值对
+                node_key = node.key.decode()
+                if node_key.startswith("nodes/"):  # 检查前缀
+                    node_info = node.value.decode()  # 处理字节编码
+                    node_info_list[node_key.split('/')[-1]] = node_info  # 以节点名称为键
+                    logging.info(f"Node '{node_key.split('/')[-1]}': {node_info}")
         except Exception as e:
             logging.error(f"Failed to list nodes from etcd: {e}")
             raise
@@ -119,7 +130,9 @@ class NodeController:
     def _update_etcd_node(self, node):
         """更新节点信息到 etcd."""
         try:
-            self.etcd_client.put(f"nodes/{node.name}", node.to_dict())
+            # 将字典转换为 JSON 字符串
+            node_data = json.dumps(node.to_dict())
+            self.etcd_client.put(f"nodes/{node.name}", node_data)
             logging.info(f"Node '{node.name}' updated in etcd.")
         except Exception as e:
             logging.error(f"Failed to update node '{node.name}' in etcd: {e}")
@@ -130,3 +143,18 @@ class NodeController:
         if node_name not in self.nodes:
             logging.error(f"Node '{node_name}' does not exist.")
             raise Exception(f"Node '{node_name}' does not exist.")
+        
+    def get_all_nodes(self):
+        """获取所有节点信息"""
+        node_info_list = {}
+        try:
+            # 获取带前缀的所有节点
+            nodes = self.etcd_client.get_with_prefix("nodes/")
+            for node in nodes:
+                node_key = node.key.decode()  # 获取节点的键
+                node_value = node.value.decode()  # 获取节点的值
+                node_info_list[node_key] = json.loads(node_value)  # 将 JSON 字符串转换为字典
+        except Exception as e:
+            logging.error(f"Failed to list nodes from etcd: {e}")
+            raise
+        return node_info_list

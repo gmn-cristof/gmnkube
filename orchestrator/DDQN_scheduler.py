@@ -29,7 +29,7 @@ class DDQNScheduler:
         model = tf.keras.Sequential()
         model.add(tf.keras.layers.Input(shape=(self.state_size,)))  # 输入层
         model.add(tf.keras.layers.Dense(4, activation='relu'))  # 隐藏层1
-        model.add(tf.keras.layers.Dense(8, activation='relu'))  # 隐藏层2
+        model.add(tf.keras.layers.Dense(4, activation='relu'))  # 隐藏层2
         model.add(tf.keras.layers.Dense(self.action_size, activation='linear'))  # 输出层
         model.compile(loss='mse', optimizer=tf.keras.optimizers.Adam(learning_rate=self.config['learning_rate']))  # 编译模型
         return model

@@ -137,7 +137,7 @@ class Node:
         """将节点信息转换为字典形式，包含资源使用比例，便于序列化。"""
         return {
             "name": self.name,
-            "ip_adress": self.ip_adress,
+            "ip_address": self.ip_address,
             "total_cpu": self.total_cpu,
             "total_memory": self.total_memory,
             "total_gpu": self.total_gpu,

@@ -9,24 +9,35 @@ from container.container_runtime import ContainerRuntime
 from pod.pod_controller import PodController
 from container.image_handler import ImageHandler
 from node.node_controller import NodeController
-from orchestrator.DDQN_scheduler import DDQNScheduler
+#from orchestrator.DDQN_scheduler import DDQNScheduler
 from orchestrator.kube_scheduler_plus import Kube_Scheduler_Plus
 from sanic_cors import CORS
-import logging
-
+import logging,json
 
 app = Sanic(__name__)
-CORS(app)
+app.config.DEBUG = True
+# CORS(app)
 
-# 初始化各个控制器
+# 全局唯一的调度器实例
+ddqn_scheduler = None
+
+# 初始化控制器
 etcd_client = EtcdClient()
 container_manager = ContainerManager(etcd_client)
 container_runtime = ContainerRuntime(etcd_client)
 image_handler = ImageHandler()
 pod_controller = PodController(etcd_client)
 node_controller = NodeController(etcd_client)
-ddqn_scheduler = DDQNScheduler(node_controller)
 kube_scheduler = Kube_Scheduler_Plus(node_controller)
+
+# def create_scheduler():
+#     global ddqn_scheduler
+#     if ddqn_scheduler is None:
+#         ddqn_scheduler = DDQNScheduler(node_controller)
+
+# @app.listener('before_server_start')
+# async def setup_scheduler(app, loop):
+#     create_scheduler()  # 在服务器启动前创建调度器
 
 def configure_routes(app):
     # Node 相关路由
@@ -36,8 +47,8 @@ def configure_routes(app):
         try:
             name = data['name']
             ip_address = data['ip_address']
-            total_cpu = data['total_cpu', 0]
-            total_memory = data['total_memory', 0]
+            total_cpu = data.get('total_cpu', 0)  # 修改这一行
+            total_memory = data.get('total_memory', 0)
             total_gpu = data.get('total_gpu', 0)
             total_io = data.get('total_io', 0)
             total_net = data.get('total_net', 0)
@@ -60,10 +71,13 @@ def configure_routes(app):
     @app.route('/nodes', methods=['GET'])
     async def list_nodes(request: Request):
         try:
-            nodes = node_controller.list_nodes()
+            # 从 etcd 获取所有节点信息
+            nodes = node_controller.get_all_nodes()
             return response.json({'nodes': nodes}, status=200)
         except Exception as e:
+            logging.error(f"Error while listing nodes: {e}")
             return response.json({'error': str(e)}, status=500)
+
 
     @app.route('/nodes/<name>', methods=['GET'])
     async def get_node(request: Request, name: str):
@@ -165,56 +179,61 @@ def configure_routes(app):
             return response.json({'error': str(e)}, status=500)
         
     # DDQN 调度相关路由
-    @app.route("/DDQN_schedule", methods=["POST"])
-    async def schedule_pod(request):
-        """调度一个 Pod 到合适的节点."""
-        try:
-            pod_data = request.json  # 从请求中获取 Pod 数据
+    # @app.route("/DDQN_schedule", methods=["POST"])
+    # async def schedule_pod(request):
+    #     """调度一个 Pod 到合适的节点."""
+    #     try:
+    #         pod_data = request.json  # 从请求中获取 Pod 数据
 
-            # 提取 Pod 的元数据和规范
-            metadata = pod_data.get("metadata", {})
-            spec = pod_data.get("spec", {})
+    #         # 提取 Pod 的元数据和规范
+    #         metadata = pod_data.get("metadata", {})
+    #         spec = pod_data.get("spec", {})
 
-            pod_name = metadata.get("name")
-            namespace = metadata.get("namespace", "default")
-            volumes = spec.get("volumes", [])
-            # Create a list to hold Container objects
-            containers = []
+    #         pod_name = metadata.get("name")
+    #         namespace = metadata.get("namespace", "default")
+    #         volumes = spec.get("volumes", [])
+    #         # Create a list to hold Container objects
+    #         containers = []
 
-            # Iterate through each container definition in the JSON
-            for container_data in spec.get("containers", []):
-                container_name = container_data.get("name")
-                container_image = container_data.get("image")
-                container_command = container_data.get("command")
-                container_ports = container_data.get("ports", [])
-                container_resources = container_data.get("resources", {})
+    #         # Iterate through each container definition in the JSON
+    #         for container_data in spec.get("containers", []):
+    #             container_name = container_data.get("name")
+    #             container_image = container_data.get("image")
+    #             container_command = container_data.get("command")
+    #             container_ports = container_data.get("ports", [])
+    #             container_resources = container_data.get("resources", {})
 
-                # Extract port numbers for the Container class
-                ports = [port['containerPort'] for port in container_ports] if container_ports else []
+    #             # Extract port numbers for the Container class
+    #             ports = [port['containerPort'] for port in container_ports] if container_ports else []
 
-                # Create a Container object
-                container = Container(
-                    name=container_name,
-                    image=container_image,
-                    command=container_command,
-                    resources=container_resources,
-                    ports=ports
-                )
-                containers.append(container)
-            # 创建 Pod 实例
-            pod = Pod(name=pod_name, containers=containers, namespace=namespace, volumes=volumes)
+    #             # Create a Container object
+    #             container = Container(
+    #                 name=container_name,
+    #                 image=container_image,
+    #                 command=container_command,
+    #                 resources=container_resources,
+    #                 ports=ports
+    #             )
+    #             containers.append(container)
+    #         # 创建 Pod 实例
+    #         pod = Pod(name=pod_name, containers=containers, namespace=namespace, volumes=volumes)
 
-            # 设置 Pod 资源请求和限制
-            for container in containers:
-                resources = container.get("resources", {})
-                pod.resources['requests'].update(resources.get("requests", {}))
-                pod.resources['limits'].update(resources.get("limits", {}))
+    #         # 设置 Pod 资源请求和限制
+    #         for container in containers:
+    #             resources = container.get("resources", {})
+    #             pod.resources['requests'].update(resources.get("requests", {}))
+    #             pod.resources['limits'].update(resources.get("limits", {}))
 
-            # 调用调度器调度 Pod
-            ddqn_scheduler.schedule_pod(pod)
-            return response.json({"status": "success", "message": f"Pod '{pod_name}' scheduled successfully."})
+    #         # 调用调度器调度 Pod
+    #         ddqn_scheduler.schedule_pod(pod)
+    #         return response.json({"status": "success", "message": f"Pod '{pod_name}' scheduled successfully."})
 
-        except SanicException as e:
-            return response.json({"status": "error", "message": str(e)}, status=400)
-        except Exception as e:
-            return response.json({"status": "error", "message": f"Failed to schedule Pod: {str(e)}"}, status=500)
+    #     except SanicException as e:
+    #         return response.json({"status": "error", "message": str(e)}, status=400)
+    #     except Exception as e:
+    #         return response.json({"status": "error", "message": f"Failed to schedule Pod: {str(e)}"}, status=500)
+        
+configure_routes(app)
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8001, debug=True)
