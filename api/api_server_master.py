@@ -47,7 +47,7 @@ def configure_routes(app):
         try:
             name = data['name']
             ip_address = data['ip_address']
-            total_cpu = data.get('total_cpu', 0)  # 修改这一行
+            total_cpu = data.get('total_cpu', 0)  
             total_memory = data.get('total_memory', 0)
             total_gpu = data.get('total_gpu', 0)
             total_io = data.get('total_io', 0)
@@ -78,7 +78,6 @@ def configure_routes(app):
             logging.error(f"Error while listing nodes: {e}")
             return response.json({'error': str(e)}, status=500)
 
-
     @app.route('/nodes/<name>', methods=['GET'])
     async def get_node(request: Request, name: str):
         try:
@@ -95,18 +94,31 @@ def configure_routes(app):
             pod_controller.schedule_pod_to_node(pod_name, name)
             return response.json({'message': f"Pod '{pod_name}' scheduled to Node '{name}' successfully."}, status=200)
         except Exception as e:
+            logging.error("An error occurred", exc_info=True)
             return response.json({'error': str(e)}, status=500)
    
-    # Pod 相关路由
     @app.route('/pods', methods=['POST'])
     async def create_pod(request: Request):
-        data = await request.json()  # Ensure we're awaiting the JSON parsing
+        print(type(request))
+        print(request)
         try:
+            data = request.json
+            print(type(request))
+            print(request)
+
+  
             metadata = data.get("metadata")
             spec = data.get("spec")
+            
+            if not metadata or not spec:
+                return response.json({'error': "Invalid pod specification."}, status=400)
+
             name = metadata.get("name")
             namespace = metadata.get("namespace", "default")
-            
+
+            if not name:
+                return response.json({'error': "Pod name is required."}, status=400)
+
             # Create a list to hold Container objects
             containers = []
 
@@ -114,12 +126,20 @@ def configure_routes(app):
             for container_data in spec.get("containers", []):
                 container_name = container_data.get("name")
                 container_image = container_data.get("image")
-                container_command = container_data.get("command")
+                container_command = container_data.get("command", [])  # Default to empty list
                 container_ports = container_data.get("ports", [])
-                container_resources = container_data.get("resources", {})
+                container_resources = container_data.get("resources", {
+                                'requests': {
+                                    },
+                                'limits': { 
+                                }
+                })
+
+                if not container_name or not container_image:
+                    return response.json({'error': "Container name and image are required."}, status=400)
 
                 # Extract port numbers for the Container class
-                ports = [port['containerPort'] for port in container_ports] if container_ports else []
+                ports = [port['containerPort'] for port in container_ports if 'containerPort' in port]
 
                 # Create a Container object
                 container = Container(
@@ -131,12 +151,18 @@ def configure_routes(app):
                 )
                 containers.append(container)
 
+            if not containers:
+                return response.json({'error': "At least one container must be specified."}, status=400)
+
             # Call the pod controller to create the pod
             pod_controller.create_pod(name, containers, namespace)
 
             return response.json({'message': f"Pod '{name}' created successfully."}, status=201)
+
         except Exception as e:
+            logging.error("An error occurred", exc_info=True)
             return response.json({'error': str(e)}, status=500)
+
 
     @app.route('/pods/<name>', methods=['DELETE'])
     async def delete_pod(request: Request, name: str):
@@ -149,10 +175,13 @@ def configure_routes(app):
     @app.route('/pods', methods=['GET'])
     async def list_pods(request: Request):
         try:
-            pods = pod_controller.list_pods()
+            # 从 etcd 获取所有 Pods 信息
+            pods = pod_controller.get_all_pods()
             return response.json({'pods': pods}, status=200)
         except Exception as e:
+            logging.error(f"Error while listing pods: {e}")
             return response.json({'error': str(e)}, status=500)
+
 
     @app.route('/pods/<name>/stop', methods=['POST'])
     async def stop_pod(request: Request, name: str):

@@ -7,11 +7,11 @@ import GPUtil
 
 
 class Node:
-    def __init__(self, name, ip_address, total_cpu=None, total_memory=None, total_gpu=0, total_io=0, total_net=0, labels=None, annotations=None):
+    def __init__(self, name, ip_address, total_cpu=0, total_memory=0, total_gpu=0, total_io=0, total_net=0, labels=None, annotations=None):
         """
         初始化 Node 对象。
         """
-        if total_cpu is None or total_memory is None:
+        if total_cpu is 0 or total_memory is 0:
             total_cpu, total_memory = self._fetch_resource_info()
 
         self.name = name

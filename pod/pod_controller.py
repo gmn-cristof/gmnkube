@@ -1,5 +1,5 @@
 import logging
-import yaml
+import yaml,json
 from .pod import Pod
 from container.container import Container
 from etcd.etcd_client import EtcdClient  
@@ -23,6 +23,7 @@ class PodController:
             self.etcd_client.put(f"/pods/{namespace}/{name}/status", "Created")
             logging.info(f"Pod '{name}' created successfully with containers: {[c.name for c in containers]}.")
         except Exception as e:
+            logging.error("An error occurred", exc_info=True)
             logging.error(f"Failed to create Pod '{name}'. Containers: {containers}. Error: {e}")
             raise
 
@@ -142,3 +143,20 @@ class PodController:
         except Exception as e:
             logging.error(f"Failed to restart Pod '{name}': {e}")
             raise
+
+    def get_all_pods(self):
+        """获取所有 Pods 的信息"""
+        try:
+            pod_values = self.etcd_client.get_with_prefix("pods/")  # 使用 EtcdClient 的方法
+            pod_info_list = {}
+
+            for value in pod_values:
+                pod_data = json.loads(value)  # 解析 JSON 字符串
+                pod_name = pod_data['metadata']['name']  # 获取 Pod 名称
+                pod_info_list[pod_name] = pod_data  # 存储 Pod 数据
+
+            logging.info(f"Retrieved all pods: {pod_info_list}")
+            return pod_info_list
+        except Exception as e:
+            logging.error(f"Failed to get all pods: {e}")
+            return {}

@@ -145,16 +145,20 @@ class NodeController:
             raise Exception(f"Node '{node_name}' does not exist.")
         
     def get_all_nodes(self):
-        """获取所有节点信息"""
-        node_info_list = {}
+        """获取所有节点的信息"""
         try:
-            # 获取带前缀的所有节点
-            nodes = self.etcd_client.get_with_prefix("nodes/")
-            for node in nodes:
-                node_key = node.key.decode()  # 获取节点的键
-                node_value = node.value.decode()  # 获取节点的值
-                node_info_list[node_key] = json.loads(node_value)  # 将 JSON 字符串转换为字典
+            node_values = self.etcd_client.get_with_prefix("nodes/")  # 使用 EtcdClient 的方法
+            node_info_list = {}
+
+            for value in node_values:
+                node_data = json.loads(value)  # 解析 JSON 字符串
+                node_name = node_data['name']  # 获取节点名称
+                node_info_list[node_name] = node_data  # 存储节点数据
+
+            logging.info(f"Retrieved all nodes: {node_info_list}")
+            return node_info_list
         except Exception as e:
-            logging.error(f"Failed to list nodes from etcd: {e}")
-            raise
-        return node_info_list
+            logging.error(f"Failed to get all nodes: {e}")
+            return {}
+
+

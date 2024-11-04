@@ -42,13 +42,22 @@ class EtcdClient:
     def get_with_prefix(self, prefix):
         """根据前缀从 etcd 读取所有键值对"""
         try:
-            # 将生成器转换为列表
-            values = list(self.client.get_prefix(prefix))
-            logger.info(f"Retrieved values for prefix {prefix}")
-            return values
+            values = self.client.get_prefix(prefix)  # 获取前缀的值
+            #logger.info(f"Retrieved values for prefix {prefix}")
+
+            result = []
+            for kv in values:
+                value = kv[0].decode('utf-8')  # 只取字节字符串部分
+                result.append(value)
+            
+            logger.info(f"Values returned: {result}")
+            return result
+
         except Exception as e:
             logger.error(f"Failed to get values with prefix {prefix}: {e}")
             return []
+
+
 
 
     def delete(self, key):

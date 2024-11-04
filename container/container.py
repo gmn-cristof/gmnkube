@@ -2,7 +2,7 @@ import json
 from etcd.etcd_client import EtcdClient  # 确保导入你的 Etcd 客户端
 
 class Container:
-    def __init__(self, name: str, image: str, command=None,resources=None, ports=None, etcd_client=None):
+    def __init__(self, name: str, image: str, command=None, resources=None, ports=None, etcd_client=None):
         """
         初始化容器对象。
         
@@ -20,10 +20,10 @@ class Container:
         self.name = name
         self.image = image
         self.command =command or []
-        self.resources = {
+        self.resources = resources or {
             'requests': {},
             'limits': {}
-        }
+        } 
         self.ports = ports or []
         self.etcd_client = etcd_client or EtcdClient()  # 初始化 Etcd 客户端
         self.sync_to_etcd()  # 同步初始状态到 etcd
