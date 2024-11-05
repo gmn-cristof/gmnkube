@@ -13,7 +13,7 @@ class ContainerRuntime:
         """Starts a container and updates etcd status."""
         try:
             result = subprocess.run(
-                ['ctr', 'task', 'start', name], capture_output=True, text=True
+                ['sudo','ctr','task','start', name], capture_output=True, text=True
             )
             if result.returncode != 0:
                 raise Exception(f"Error starting container: {result.stderr.strip()}")

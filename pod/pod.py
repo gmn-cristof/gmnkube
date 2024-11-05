@@ -1,17 +1,6 @@
-import logging,json
-from container.container_runtime import ContainerRuntime
-from container.container import Container
-from etcd.etcd_client import EtcdClient  # 假设有一个 etcd 客户端类
-
-containerRuntime = ContainerRuntime(EtcdClient())
-
 import logging
 import json
-from container.container_runtime import ContainerRuntime
-from container.container import Container
 from etcd.etcd_client import EtcdClient  # 假设有一个 etcd 客户端类
-
-containerRuntime = ContainerRuntime(EtcdClient())
 
 class Pod:
     def __init__(self, name: str, containers: list = None, namespace: str = 'default', volumes=None):
@@ -91,55 +80,6 @@ class Pod:
             'volumes': self.volumes,
             'status': self.status
         }
-
-
-    def start(self):
-        """Start all containers in the Pod and update etcd status"""
-        if self.status != 'Pending' and self.status != 'Stopped':
-            logging.error(f"Pod '{self.name}' is already running or terminated.")
-            return
-        
-        all_started = True
-        for container in self.containers:
-            try:
-                containerRuntime.start_container(container.name)
-                logging.info(f"Container '{container.name}' started successfully.")
-                # 将容器状态更新到 etcd
-                self.etcd_client.put(f"/pods/{self.name}/containers/{container.name}/status", "Running")
-            except Exception as e:
-                logging.error(f"Failed to start container '{container.name}': {e}")
-                all_started = False
-        
-        if all_started:
-            self.status = 'Running'
-            logging.info(f"Pod '{self.name}' in namespace '{self.namespace}' is now running.")
-            # 更新 Pod 状态到 etcd
-            self.etcd_client.put(f"/pods/{self.name}/status", "Running")
-        else:
-            logging.error(f"Pod '{self.name}' failed to start all containers.")
-
-    def stop(self):
-        """Stop all containers in the Pod and update etcd status"""
-        if self.status != 'Running':
-            logging.error(f"Pod '{self.name}' is not running.")
-            return
-        
-        all_stopped = True
-        for container in self.containers:
-            try:
-                containerRuntime.stop_container(container.name)
-                logging.info(f"Container '{container.name}' stopped successfully.")
-                # 将容器状态更新到 etcd
-                self.etcd_client.put(f"/pods/{self.name}/containers/{container.name}/status", "Stopped")
-            except Exception as e:
-                logging.error(f"Failed to stop container '{container.name}': {e}")
-                all_stopped = False
-
-        if all_stopped:
-            self.status = 'Stopped'
-            logging.info(f"Pod '{self.name}' in namespace '{self.namespace}' has been stopped.")
-            # 更新 Pod 状态到 etcd
-            self.etcd_client.put(f"/pods/{self.name}/status", "Stopped")
 
     def add_container(self, container):
         """Add a new container to the Pod if it is not running, and update etcd"""

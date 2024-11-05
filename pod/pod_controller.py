@@ -2,12 +2,14 @@ import logging
 import yaml,json
 from .pod import Pod
 from container.container import Container
-from etcd.etcd_client import EtcdClient  
+
 
 class PodController:
-    def __init__(self, etcd_client):
+    def __init__(self, etcd_client, container_manager, container_runtime):
         self.pods = {}
         self.etcd_client = etcd_client
+        self.container_manager=container_manager
+        self.container_runtime=container_runtime
 
     def create_pod(self, name: str, containers: list, namespace: str = 'default'):
         """Creates a new Pod with a list of containers"""
@@ -17,7 +19,6 @@ class PodController:
 
         pod = Pod(name=name, containers=containers, namespace=namespace)
         try:
-            #pod.start()
             self.pods[name] = pod
             # 将 Pod 状态同步到 etcd
             self.etcd_client.put(f"/pods/{namespace}/{name}/status", "Created")
@@ -69,10 +70,10 @@ class PodController:
         if name not in self.pods:
             logging.error(f"Pod '{name}' not found.")
             raise ValueError(f"Pod '{name}' not found.")
-
         pod = self.pods[name]
         try:
-            pod.stop()
+            self.stop_pod(name)
+            
             del self.pods[name]
             # 从 etcd 中删除该 Pod 的状态记录
             self.etcd_client.delete(f"/pods/{pod.namespace}/{name}")
@@ -102,7 +103,29 @@ class PodController:
             raise ValueError(f"Pod '{name}' not found.")
 
         try:
-            pod.start()
+            """Start all containers in the Pod and update etcd status"""
+            if pod.status != 'Pending' and pod.status != 'Stopped':
+                logging.error(f"Pod '{pod.name}' is already running or terminated.")
+                return
+            
+            all_started = True
+            for container in pod.containers:
+                try:
+                    self.container_manager.create_container(container.image,container.name)
+                    self.container_runtime.start_container(container.name)
+                    logging.info(f"Container '{container.name}' started successfully.")
+                    # 将容器状态更新到 etcd
+                    self.etcd_client.put(f"/pods/{pod.name}/containers/{container.name}/status", "Running")
+                except Exception as e:
+                    logging.error(f"Failed to start container '{container.name}': {e}")
+                    all_started = False
+            
+            if all_started:
+                pod.status = 'Running'
+                logging.info(f"Pod '{pod.name}' in namespace '{pod.namespace}' is now running.")
+                # 更新 Pod 状态到 etcd
+            else:
+                logging.error(f"Pod '{pod.name}' failed to start all containers.")
             # 更新 etcd 中的 Pod 状态
             self.etcd_client.put(f"/pods/{pod.namespace}/{name}/status", "Running")
             logging.info(f"Pod '{name}' started successfully.")
@@ -119,7 +142,26 @@ class PodController:
             raise ValueError(f"Pod '{name}' not found.")
         
         try:
-            pod.stop()
+            """Stop all containers in the Pod and update etcd status"""
+            if pod.status != 'Running':
+                logging.error(f"Pod '{pod.name}' is not running.")
+                return
+            
+            all_stopped = True
+            for container in pod.containers:
+                try:
+                    self.container_runtime.stop_container(container.name)
+                    logging.info(f"Container '{container.name}' stopped successfully.")
+                    # 将容器状态更新到 etcd
+                    self.etcd_client.put(f"/pods/{pod.name}/containers/{container.name}/status", "Stopped")
+                except Exception as e:
+                    logging.error(f"Failed to stop container '{container.name}': {e}")
+                    all_stopped = False
+
+            if all_stopped:
+                pod.status = 'Stopped'
+                logging.info(f"Pod '{pod.name}' in namespace '{pod.namespace}' has been stopped.")
+                
             # 更新 etcd 中的 Pod 状态
             self.etcd_client.put(f"/pods/{pod.namespace}/{name}/status", "Stopped")
             logging.info(f"Pod '{name}' stopped successfully.")
@@ -135,8 +177,8 @@ class PodController:
             raise ValueError(f"Pod '{name}' not found.")
         
         try:
-            pod.stop()
-            pod.start()
+            self.stop_pod(name)
+            self.start_pod(name)
             # 更新 etcd 中的 Pod 状态
             self.etcd_client.put(f"/pods/{pod.namespace}/{name}/status", "Running")
             logging.info(f"Pod '{name}' restarted successfully.")

@@ -1,28 +1,33 @@
 import logging
-from pod.pod import Pod
-from pod.pod_controller import PodController
+# from pod.pod import Pod
+# from pod.pod_controller import PodController
 from etcd.etcd_client import EtcdClient  # 假设有 etcd 客户端类
 import psutil
 import GPUtil
 
 
 class Node:
-    def __init__(self, name, ip_address, total_cpu=0, total_memory=0, total_gpu=0, total_io=0, total_net=0, labels=None, annotations=None):
+    def __init__(self, name, ip_address, total_cpu, total_memory, total_gpu, total_io, total_net, labels=None, annotations=None):
         """
         初始化 Node 对象。
         """
-        if total_cpu is 0 or total_memory is 0:
-            total_cpu, total_memory = self._fetch_resource_info()
+        print(total_cpu)
+        if total_cpu==0:
+            total_cpu, total_memory,total_gpu,total_io,total_net =self._fetch_resource_info()
 
+        # 确保资源值不为 None，使用 0 作为默认值
         self.name = name
         self.ip_address = ip_address
-        self.total_cpu = total_cpu
-        self.total_memory = total_memory
-        self.total_gpu = total_gpu
-        self.total_io = total_io
-        self.total_net = total_net
+        self.total_cpu = total_cpu   # 默认值为 0
+        self.total_memory = total_memory   # 默认值为 0
+        self.total_gpu = total_gpu   # 默认值为 0
+        self.total_io = total_io   # 默认值为 0
+        self.total_net = total_net   # 默认值为 0
         self.labels = labels or {}
         self.annotations = annotations or {}
+        total_cpu, total_memory,total_gpu,total_io,total_net =self._fetch_resource_info()
+
+        # 初始化分配资源和状态
         self.allocated_cpu = 0
         self.allocated_memory = 0
         self.allocated_gpu = 0
@@ -31,6 +36,8 @@ class Node:
         self.pods = []
         self.status = "Ready"
         self.etcd_client = EtcdClient()
+
+
 
     def _fetch_resource_info(self):
         """
@@ -67,11 +74,14 @@ class Node:
 
         :param pod: 要添加的 Pod 对象
         """
-        required_cpu = pod.resources.get("requests", {}).get("cpu", 0)
-        required_memory = pod.resources.get("requests", {}).get("memory", 0)
-        required_gpu = pod.resources.get("requests", {}).get("gpu", 0)
-        required_io = pod.resources.get("requests", {}).get("io", 0)
-        required_net = pod.resources.get("requests", {}).get("net", 0)
+        resources=pod.resources.get("requests", {})
+        resources=self.convert_resources(resources)
+        
+        required_cpu = resources.get("cpu", 0)
+        required_memory = resources.get("memory", 0)
+        required_gpu = resources.get("gpu", 0)
+        required_io = resources.get("io", 0)
+        required_net = resources.get("net", 0)
 
         if self.can_schedule(required_cpu, required_memory, required_gpu, required_io, required_net):
             self.pods.append(pod)  # 添加 Pod 到节点
@@ -85,8 +95,9 @@ class Node:
 
             # 尝试启动 Pod
             try:
-                pod.start()  # 启动 Pod
-                self.pods[pod.name] = pod  # 将 Pod 添加到字典中
+                #pod.start()  
+                # 启动 Pod
+                #self.pods[pod.name] = pod  
                 # 将 Pod 状态同步到 etcd
                 self.etcd_client.put(f"/pods/{pod.namespace}/{pod.name}/status", "Running")
                 logging.info(f"Pod '{pod.name}' created successfully with containers: {[c.name for c in pod.containers]}.")
@@ -97,6 +108,42 @@ class Node:
         else:
             logging.error(f"Not enough resources on Node {self.name} to schedule Pod {pod.name}.")
             raise Exception(f"Not enough resources on Node {self.name} to schedule Pod {pod.name}.")
+    
+    def convert_resources(self,resource_dict):
+        # CPU转换（假设单位是m，即毫核）
+        cpu_str = resource_dict.get('cpu', '0m')
+        if 'm' in cpu_str:
+            cpu_value = int(cpu_str.replace('m', '')) / 1000  # 转换为核
+        else:
+            cpu_value = float(cpu_str)  # 如果没有m，直接转为浮动数值
+
+        # 内存转换（假设单位是Mi）
+        memory_str = resource_dict.get('memory', '0Mi')
+        if 'Mi' in memory_str:
+            memory_value = int(memory_str.replace('Mi', '')) * 1024 * 1024  # 转换为字节
+        else:
+            memory_value = int(memory_str)  # 其他单位可以按需转换
+
+        # GPU转换（假设单位是个数）
+        gpu_str = resource_dict.get('gpu', '0')
+        gpu_value = int(gpu_str)  # 转换为整数
+
+        return {
+            'cpu': cpu_value,
+            'memory': memory_value,
+            'gpu': gpu_value
+        }
+
+# 示例
+# resource_requests = {
+#     'cpu': '100m',  # 100 毫核
+#     'memory': '256Mi',  # 256 Mi 内存
+#     'gpu': '1'  # 1 个 GPU
+# }
+
+# converted_resources = convert_resources(resource_requests)
+# print(converted_resources)
+
 
     def remove_pod(self, pod):
         """从节点上移除一个 Pod，并释放相应资源。

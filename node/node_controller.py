@@ -13,24 +13,27 @@ class NodeController:
         self.nodes = {}
         self.etcd_client = etcd_client
 
-    def add_node(self, name, ip_address, total_cpu=0, total_memory=0, total_gpu=0, total_io=0, total_net=0, labels=None, annotations=None):
-        """添加一个新的节点，并在 etcd 中保存其信息.
-        :param name: 节点名称
-        :param ip_address: 节点ip地址
-        :param total_cpu: 节点总 CPU 资源
-        :param total_memory: 节点总内存资源
-        :param total_gpu: 节点总 GPU 资源（可选）
-        :param total_io: 节点总 IO 资源（可选）
-        :param total_net: 节点总网络带宽（可选）
-        :param labels: 节点标签（可选）
-        :param annotations: 节点注释（可选）
-        """
+    def add_node(self, name, ip_address, total_cpu, total_memory, total_gpu, total_io, total_net, labels=None, annotations=None):
+        """添加一个新的节点，并在 etcd 中保存其信息."""
         if name in self.nodes:
             logging.error(f"Node '{name}' already exists.")
             raise Exception(f"Node '{name}' already exists.")
         
+        #默认值处理：0 作为初始化值
+        total_cpu = total_cpu if total_cpu != 0 else 0  # 0表示没有分配资源
+        total_memory = total_memory if total_memory != 0 else 0
+        total_gpu = total_gpu if total_gpu != 0 else 0
+        total_io = total_io if total_io != 0 else 0
+        total_net = total_net if total_net != 0 else 0
+        
+        # 默认值处理：确保 labels 和 annotations 是字典类型
+        labels = labels if labels is not None else {}
+        annotations = annotations if annotations is not None else {}
+
+        # 创建节点对象并保存
         node = Node(name, ip_address, total_cpu, total_memory, total_gpu, total_io, total_net, labels, annotations)
         self.nodes[name] = node
+
 
         # 将节点信息存储到 etcd
         self._update_etcd_node(node)

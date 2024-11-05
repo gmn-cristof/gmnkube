@@ -17,12 +17,19 @@ class DDQNScheduler:
         }
         self.node_controller = node_controller  # 节点控制器
         self.state_size = 9  # 状态大小，包含节点和 Pod 的资源信息
-        self.action_size = len(self.node_controller.nodes)  # 动作大小，即节点数量
+        self.action_size = 2 #len(self.node_controller.nodes)  
+        # 动作大小，即节点数量
         self.memory = deque(maxlen=2000)  # 经验回放内存
         self.model = self._build_model()  # 主模型
         self.target_model = self._build_model()  # 目标模型
         self.update_target_frequency = 10  # 更新目标网络的频率
         self.update_counter = 0  # 更新计数器
+
+    def _update_action_size(self):
+        # 更新 action_size 和模型的输出层大小
+        self.action_size = len(self.node_controller.nodes)  # 动态获取节点数
+        self.model = self._build_model()  # 重新构建模型
+        self.target_model = self._build_model()  # 重新构建目标模型
 
     def _build_model(self):
         # 构建深度学习模型
@@ -54,6 +61,9 @@ class DDQNScheduler:
 
     def act(self, state):
         # 根据当前状态选择动作
+        if self.action_size == 0:
+            logging.error("No nodes available for scheduling.")
+            return 0  # 或者你可以返回一个默认值，或者抛出异常
         if np.random.rand() <= self.config['epsilon']:  # 随机选择动作
             return random.randrange(self.action_size)
         act_values = self.predict(state)  # 使用模型预测动作值
@@ -87,6 +97,9 @@ class DDQNScheduler:
 
     def schedule_pod(self, pod):
         # 调度 Pod 到节点
+        if self.action_size != len(self.node_controller.nodes):
+            self._update_action_size()  # 每次调度前动态更新 action_size
+            
         state = self._get_state(pod)  # 获取当前状态，传入 Pod
         action = self.act(state)  # 选择动作
         node_name = self._get_node_from_action(action)  # 根据动作获取节点名称

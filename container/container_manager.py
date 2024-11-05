@@ -13,7 +13,7 @@ class ContainerManager:
         """Creates a container using containerd and updates etcd"""
         try:
             result = subprocess.run(
-                ['ctr', 'create', image, name], capture_output=True, text=True
+                ['sudo','ctr', 'container','create', image, name], capture_output=True, text=True
             )
             if result.returncode != 0:
                 raise Exception(f"Error creating container: {result.stderr.strip()}")
