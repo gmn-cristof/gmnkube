@@ -163,5 +163,51 @@ class NodeController:
         except Exception as e:
             logging.error(f"Failed to get all nodes: {e}")
             return {}
+        
+    def add_pod_to_node(self, pod , node_name):
+        """Schedule and add a Pod to a specified node if resources are sufficient.
 
+        :param pod: The Pod object to add
+        :param node_name: The name of the target node
+        """
+        node = self.nodes.get(node_name)
+        if not node:
+            logging.error(f"Node {node_name} does not exist.")
+            raise ValueError(f"Node {node_name} does not exist.")
+            # 尝试启动 Pod
+        try:
+            node.add_pod(pod)
+            self.etcd_client.put(f"/pods/{pod.namespace}/{pod.name}/status", "Running")
+            logging.info(f"Pod {pod.name} scheduled on Node {node.name}.")
+        except Exception as e:
+            logging.error(f"Failed to add Pod '{pod.name}': {e}")
+
+    def remove_pod_from_node(self, pod, node_name):
+        """Remove a Pod from a specified node and release resources.
+
+        :param pod: The Pod object to remove
+        :param node_name: The name of the target node
+        """
+        node = self.nodes.get(node_name)
+        if not node:
+            logging.error(f"Node {node_name} does not exist.")
+            raise ValueError(f"Node {node_name} does not exist.")
+        self.etcd_client.delete(f"/nodes/{self.name}/pods/{pod.name}")
+        node.remove_pod(pod)
+    
+    def change_node_status(self, status, node_name):
+        """change node status of a specified node
+                :param node_name: The name of the target node
+        """
+        node = self.nodes.get(node_name)
+        if not node:
+            logging.error(f"Node {node_name} does not exist.")
+            raise ValueError(f"Node {node_name} does not exist.")
+        self.etcd_client.put(f"/nodes/{self.name}/status", status)
+        node.set_status(status)
+        
+        
+        
+        
+         
 

@@ -1,5 +1,6 @@
 import subprocess
-import logging
+import logging,json
+from .container import Container
 #from etcd.etcd_client import EtcdClient  # 假设你有一个 etcd 客户端类
 
 # Configure logging
@@ -9,27 +10,43 @@ class ContainerManager:
     def __init__(self, etcd_client):
         self.etcd_client = etcd_client  # 初始化 etcd 客户端
 
-    def create_container(self, image: str, name: str):
+    def create_container(self, container: Container):
         """Creates a container using containerd and updates etcd"""
         try:
-            result = subprocess.run(
-                ['sudo','ctr', 'container','create', image, name], capture_output=True, text=True
-            )
+            # 构造创建命令
+            cmd = ['sudo', 'ctr', 'container', 'create', container.image, container.name]
+            if container.command:
+                cmd.extend(container.command)
+            if container.ports:
+                cmd.extend(['--ports', json.dumps(container.ports)])
+            if container.resources:
+                # 处理资源限制，如 requests 和 limits
+                for limit_type, resources in container.resources.items():
+                    for resource, value in resources.items():
+                        cmd.extend([f"--{limit_type}-{resource}", value])
+
+            result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:
                 raise Exception(f"Error creating container: {result.stderr.strip()}")
 
-            logging.info(f"Container {name} created successfully.")
+            logging.info(f"Container {container.name} created successfully.")
             # 将容器信息写入 etcd
-            self.etcd_client.put(f"/containers/{name}", {"image": image, "status": "created"})
+            self.etcd_client.put(f"/containers/{container.name}", {
+                "image": container.image,
+                "command": container.command,
+                "ports": container.ports,
+                "resources": container.resources,
+                "status": "created"
+            })
         except Exception as e:
-            logging.error(f"Failed to create container {name}: {e}")
-            raise  # 显式抛出异常
+            logging.error(f"Failed to create container {container.name}: {e}")
+            raise
 
     def delete_container(self, name: str):
         """Deletes a container using containerd and updates etcd"""
         try:
             result = subprocess.run(
-                ['ctr', 'containers', 'delete', name], capture_output=True, text=True
+                ['sudo', 'ctr', 'containers', 'delete', name], capture_output=True, text=True
             )
             if result.returncode != 0:
                 raise Exception(f"Error deleting container: {result.stderr.strip()}")
@@ -39,7 +56,7 @@ class ContainerManager:
             self.etcd_client.delete(f"/containers/{name}")
         except Exception as e:
             logging.error(f"Failed to delete container {name}: {e}")
-            raise  # 显式抛出异常
+            raise
 
     def list_containers(self):
         """Lists all containers using containerd"""

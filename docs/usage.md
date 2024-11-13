@@ -13,4 +13,10 @@ curl -X DELETE http://localhost:8001/nodes/node1
 curl -X GET http://localhost:8001/pods
 删除pod：
 curl -X DELETE http://localhost:8001/pods/pod1
+停止并删除所有容器：
+sudo ctr containers list --quiet | xargs -I {} sudo ctr containers delete {}
+从etcd列出所有信息：
+etcdctl get "" --prefix
+清空etcd内信息：
+etcdctl del "" --prefix
 

@@ -1,7 +1,5 @@
 from sanic import Sanic, response, SanicException
 from sanic.request import Request
-# from node.node import Node
-# from pod.pod import Pod
 from container.container import Container
 from etcd.etcd_client import EtcdClient
 from container.container_manager import ContainerManager
@@ -9,7 +7,7 @@ from container.container_runtime import ContainerRuntime
 from pod.pod_controller import PodController
 from container.image_handler import ImageHandler
 from node.node_controller import NodeController
-# from orchestrator.DDQN_scheduler import DDQNScheduler
+from orchestrator.DDQN_scheduler import DDQNScheduler
 from orchestrator.kube_scheduler_plus import Kube_Scheduler_Plus
 from sanic_cors import CORS
 import logging,json
@@ -30,14 +28,14 @@ pod_controller = PodController(etcd_client, container_manager, container_runtime
 node_controller = NodeController(etcd_client)
 kube_scheduler = Kube_Scheduler_Plus(node_controller)
 
-# def create_scheduler():
-#     global ddqn_scheduler
-#     if ddqn_scheduler is None:
-#         ddqn_scheduler = DDQNScheduler(node_controller)
+def create_scheduler():
+    global ddqn_scheduler
+    if ddqn_scheduler is None:
+        ddqn_scheduler = DDQNScheduler(node_controller)
 
-# @app.listener('before_server_start')
-# async def setup_scheduler(app, loop):
-#     create_scheduler()  # 在服务器启动前创建调度器
+@app.listener('before_server_start')
+async def setup_scheduler(app, loop):
+    create_scheduler()  # 在服务器启动前创建调度器
 
 def configure_routes(app):
     # Node 相关路由
@@ -48,7 +46,7 @@ def configure_routes(app):
         
         try:
             data = request.json  # Ensure JSON parsing is awaited.
-            print(f"Received data: {data}")
+            #print(f"Received data: {data}")
 
             # Check that essential fields are present
             if not all(key in data for key in ['name', 'ip_address']):
@@ -109,17 +107,37 @@ def configure_routes(app):
             return response.json({'error': str(e)}, status=500)
 
     @app.route('/nodes/<name>/schedule', methods=['POST'])
-    async def schedule_pod_on_node(request: Request, name: str):
-        data = request.json
-        pod_name = data.get('pod_name')
-        pod=pod_controller.get_pod(pod_name)
+    async def schedule_pod_on_node(request, name: str):
         try:
+            # 获取请求体中的JSON数据
+            pod_data = request.json
+
+            # 提取 Pod 的元数据和规范
+            metadata = pod_data.get("metadata", {})
+            #spec = pod_data.get("spec", {})
+
+            pod_name = metadata.get("name")
+            namespace = metadata.get("namespace", "default")
+
+            # 这里假设你已经有了pod_controller和node_controller来处理Pod调度逻辑
+            pod = pod_controller.get_pod(pod_name ,namespace)
+
+            # 调度Pod到指定的节点
             node_controller.schedule_pod_to_node(pod, name)
-            pod_controller.start_pod(pod_name)
-            return response.json({'message': f"Pod '{pod_name}' scheduled to Node '{name}' successfully."}, status=200)
+
+            # 启动Pod
+            pod_controller.start_pod(pod_name, namespace)
+
+            # 返回成功响应
+            return json({'message': f"Pod '{pod_name}' scheduled to Node '{name}' successfully."}, status=200)
+        except KeyError as e:
+            # 如果数据中缺少必要的字段，返回400错误
+            logging.error(f"Missing field in request data: {e}")
+            return json({'error': f"Missing field: {e}"}, status=400)
         except Exception as e:
-            logging.error("An error occurred", exc_info=True)
-            return response.json({'error': str(e)}, status=500)
+            # 捕获其他异常并记录
+            logging.error("An error occurred while scheduling pod", exc_info=True)
+            return json({'error': str(e)}, status=500)
    
     @app.route('/pods', methods=['POST'])
     async def create_pod(request: Request):
@@ -171,7 +189,8 @@ def configure_routes(app):
                     image=container_image,
                     command=container_command,
                     resources=container_resources,
-                    ports=ports
+                    ports=ports,
+                    etcd_client=etcd_client
                 )
                 containers.append(container)
 
@@ -232,29 +251,30 @@ def configure_routes(app):
             return response.json({'error': str(e)}, status=500)
         
     #DDQN 调度相关路由
-    # @app.route("/DDQN_schedule", methods=["POST"])
-    # async def schedule_pod(request):
-    #     """调度一个 Pod 到合适的节点."""
-    #     try:
-    #         pod_data = request.json  # 从请求中获取 Pod 数据
+    @app.route("/DDQN_schedule", methods=["POST"])
+    async def schedule_pod(request):
+        """调度一个 Pod 到合适的节点."""
+        try:
+            pod_data = request.json  # 从请求中获取 Pod 数据
 
-    #         # 提取 Pod 的元数据和规范
-    #         metadata = pod_data.get("metadata", {})
-    #         #spec = pod_data.get("spec", {})
+            # 提取 Pod 的元数据和规范
+            metadata = pod_data.get("metadata", {})
+            #spec = pod_data.get("spec", {})
 
-    #         pod_name = metadata.get("name")
-    #         namespace = metadata.get("namespace", "default")
+            pod_name = metadata.get("name")
+            namespace = metadata.get("namespace", "default")
 
 
-    #         # 调用调度器调度 Pod
-    #         pod=pod_controller.get_pod(pod_name)
-    #         ddqn_scheduler.schedule_pod(pod)
-    #         return response.json({"status": "success", "message": f"Pod '{pod_name}' scheduled successfully."})
+            # 调用调度器调度 Pod
+            pod=pod_controller.get_pod(pod_name, namespace)
+            ddqn_scheduler.schedule_pod(pod)
+            pod_controller.start_pod(pod_name, namespace)
+            return response.json({"status": "success", "message": f"Pod '{pod_name}' scheduled successfully."})
 
-    #     except SanicException as e:
-    #         return response.json({"status": "error", "message": str(e)}, status=400)
-    #     except Exception as e:
-    #         return response.json({"status": "error", "message": f"Failed to schedule Pod: {str(e)}"}, status=500)
+        except SanicException as e:
+            return response.json({"status": "error", "message": str(e)}, status=400)
+        except Exception as e:
+            return response.json({"status": "error", "message": f"Failed to schedule Pod: {str(e)}"}, status=500)
         
 configure_routes(app)
 

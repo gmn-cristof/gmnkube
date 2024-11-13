@@ -3,6 +3,7 @@ import tensorflow as tf
 from collections import deque
 import random
 import logging
+import re
 
 class DDQNScheduler:
     def __init__(self, node_controller):
@@ -113,11 +114,14 @@ class DDQNScheduler:
             self.remember(state, action, reward, next_state, done)  # 记住经历
             self.replay()  # 进行回放训练
         except Exception as e:
-            logging.error(f"Failed to schedule Pod {pod.name} to Node {node_name}: {e}")  # 记录错误
+            logging.error(f"[DDQN-Scheduler-INFO]: Failed to schedule Pod {pod.name} to Node {node_name}: {e}")  # 记录错误
 
     def _get_state(self, pod):
         # 获取当前系统状态，并加入 Pod 的资源需求
         states = []
+        required_cpu = self.parse_cpu(pod.resources.get('requests', {}).get('cpu', 0)) 
+        required_memory = self.parse_memory(pod.resources.get('requests', {}).get('memory', 0)) 
+        required_gpu = pod.resources.get('requests', {}).get('gpu', 0) 
         for node in self.node_controller.nodes.values():
             states.append([
                 node.allocated_cpu,
@@ -126,9 +130,9 @@ class DDQNScheduler:
                 node.total_cpu - node.allocated_cpu,
                 node.total_memory - node.allocated_memory,
                 node.total_gpu - node.allocated_gpu,
-                pod.resources.get('requests', {}).get('cpu', 0),  # Pod 所需 CPU
-                pod.resources.get('requests', {}).get('memory', 0),  # Pod 所需内存
-                pod.resources.get('requests', {}).get('gpu', 0)   # Pod 所需 GPU
+                required_cpu,  # Pod 所需 CPU
+                required_memory,  # Pod 所需内存
+                required_gpu   # Pod 所需 GPU
             ])
         return np.array(states).reshape(1, -1)
 
@@ -142,9 +146,12 @@ class DDQNScheduler:
         node = self.node_controller.get_node(node_name)  # 获取节点信息
         if node.status == "Ready":  # 如果节点状态为就绪
             # 检查节点是否能满足 Pod 的资源需求
-            if (node.total_cpu - node.allocated_cpu) < pod.required_cpu or \
-               (node.total_memory - node.allocated_memory) < pod.required_memory or \
-               (node.total_gpu - node.allocated_gpu) < pod.required_gpu:
+            required_cpu = self.parse_cpu(pod.resources.get('requests', {}).get('cpu', 0)) 
+            required_memory = self.parse_memory(pod.resources.get('requests', {}).get('memory', 0)) 
+            required_gpu = pod.resources.get('requests', {}).get('gpu', 0) 
+            if (node.total_cpu - node.allocated_cpu) < required_cpu or \
+               (node.total_memory - node.allocated_memory) < required_memory or \
+               (node.total_gpu - node.allocated_gpu) < required_gpu:
                 return -1  # 资源不足，给予负奖励
 
             cpu_usage_ratio = node.allocated_cpu / node.total_cpu if node.total_cpu > 0 else 0
@@ -167,4 +174,35 @@ class DDQNScheduler:
 
             return reward  # 返回计算的奖励
         return -1  # 如果节点不就绪，返回惩罚
+    
+    
+    def parse_cpu(self, cpu_str):
+        """解析 CPU 请求，返回核心数"""
+        if isinstance(cpu_str, str):
+            match = re.match(r"(\d+)(m|)", cpu_str)
+            if match:
+                cpu_value, unit = match.groups()
+                cpu_value = float(cpu_value)
+                if unit == 'm':  # 如果是毫核，转换为核心数
+                    return cpu_value / 1000  # 毫核转换为核心数
+                else:
+                    return cpu_value  # 核心数本身
+        return 0.0
+
+    def parse_memory(self, mem_str):
+        """解析内存请求，返回字节数"""
+        if isinstance(mem_str, str):
+            match = re.match(r"(\d+)(Ki|Mi|Gi|Ti)", mem_str)
+            if match:
+                mem_value, unit = match.groups()
+                mem_value = float(mem_value)
+                if unit == 'Ki':  # KiB -> 字节
+                    return int(mem_value * 1024)
+                elif unit == 'Mi':  # MiB -> 字节
+                    return int(mem_value * 1024 * 1024)
+                elif unit == 'Gi':  # GiB -> 字节
+                    return int(mem_value * 1024 * 1024 * 1024)
+                elif unit == 'Ti':  # TiB -> 字节
+                    return int(mem_value * 1024 * 1024 * 1024 * 1024)
+        return 0
 

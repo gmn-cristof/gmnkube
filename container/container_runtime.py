@@ -1,5 +1,6 @@
 import subprocess
 import logging
+from .container import Container
 #from etcd.etcd_client import EtcdClient  
 
 # Configure logging
@@ -9,25 +10,25 @@ class ContainerRuntime:
     def __init__(self, etcd_client):
         self.etcd_client = etcd_client  # 初始化 etcd 客户端
 
-    def start_container(self, name: str):
+    def start_container(self, container: Container):
         """Starts a container and updates etcd status."""
         try:
             result = subprocess.run(
-                ['sudo','ctr','task','start', name], capture_output=True, text=True
+                ['sudo', 'ctr', 'task', 'start', container.name], capture_output=True, text=True
             )
             if result.returncode != 0:
                 raise Exception(f"Error starting container: {result.stderr.strip()}")
-            logging.info(f"Container {name} started successfully.")
+            logging.info(f"Container {container.name} started successfully.")
             # 更新 etcd 中的容器状态
-            self.etcd_client.put(f"/containers/{name}/status", "running")
+            self.etcd_client.put(f"/containers/{container.name}/status", "running")
         except Exception as e:
-            logging.error(f"Failed to start container {name}: {e}")
+            logging.error(f"Failed to start container {container.name}: {e}")
 
     def stop_container(self, name: str):
         """Stops a container and updates etcd status."""
         try:
             result = subprocess.run(
-                ['ctr', 'task', 'kill', name], capture_output=True, text=True
+                ['sudo', 'ctr', 'task', 'kill', name], capture_output=True, text=True
             )
             if result.returncode != 0:
                 raise Exception(f"Error stopping container: {result.stderr.strip()}")
@@ -36,6 +37,7 @@ class ContainerRuntime:
             self.etcd_client.put(f"/containers/{name}/status", "stopped")
         except Exception as e:
             logging.error(f"Failed to stop container {name}: {e}")
+
 
     def list_containers(self):
         """Lists all containers and optionally syncs with etcd."""
@@ -72,7 +74,7 @@ class ContainerRuntime:
         """Inspects a container and syncs data with etcd."""
         try:
             result = subprocess.run(
-                ['ctr', 'containers', 'info', name], capture_output=True, text=True
+                ['sudo', 'ctr', 'containers', 'info', name], capture_output=True, text=True
             )
             if result.returncode != 0:
                 raise Exception(f"Error inspecting container: {result.stderr.strip()}")

@@ -75,7 +75,7 @@ pod_data = {
         {
           "name": "busybox-container",
           "image": "docker.m.daocloud.io/library/busybox:latest",
-          "command": ["sh", "-c", "sleep 3600"],
+          "command": ["sh", "-c", "sleep 10"],
           "resources": {
             "requests": {
               "cpu": "50m",
@@ -104,11 +104,33 @@ pod_data = {
 
 response = requests.post('http://localhost:8001/pods', json=pod_data)
 
-pod_data ={
+pod_data ={ 
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+      "name": "example-pod",
+      "namespace": "default",
+      "status": "pending"
+    }
+}
+
+# response = requests.post('http://localhost:8001/nodes/node1/schedule', json=pod_data)
+response = requests.post('http://localhost:8001/DDQN_schedule', json=pod_data)
+
+
+
+pod_data ={ 
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+      "name": "example-pod",
+      "namespace": "default",
+      "status": "pending"
+    }
+}
+
+{
     "pod_name": "example-pod",
     "namespace": "default",
     "replica_count": 3
 }
-
-response = requests.post('http://localhost:8001/nodes/node1/schedule', json=pod_data)
-print(response.json())

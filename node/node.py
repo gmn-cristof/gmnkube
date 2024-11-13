@@ -1,7 +1,4 @@
 import logging
-# from pod.pod import Pod
-# from pod.pod_controller import PodController
-from etcd.etcd_client import EtcdClient  # 假设有 etcd 客户端类
 import psutil
 import GPUtil
 
@@ -11,7 +8,7 @@ class Node:
         """
         初始化 Node 对象。
         """
-        print(total_cpu)
+        # print(total_cpu)
         if total_cpu==0:
             total_cpu, total_memory,total_gpu,total_io,total_net =self._fetch_resource_info()
 
@@ -35,7 +32,6 @@ class Node:
         self.allocated_net = 0
         self.pods = []
         self.status = "Ready"
-        self.etcd_client = EtcdClient()
 
 
 
@@ -92,19 +88,6 @@ class Node:
             self.allocated_io += required_io
             self.allocated_net += required_net
             self._log_resource_warning()
-
-            # 尝试启动 Pod
-            try:
-                #pod.start()  
-                # 启动 Pod
-                #self.pods[pod.name] = pod  
-                # 将 Pod 状态同步到 etcd
-                self.etcd_client.put(f"/pods/{pod.namespace}/{pod.name}/status", "Running")
-                logging.info(f"Pod '{pod.name}' created successfully with containers: {[c.name for c in pod.containers]}.")
-                logging.info(f"Pod {pod.name} scheduled on Node {self.name}.")
-            except Exception as e:
-                logging.error(f"Failed to create Pod '{pod.name}': {e}")
-                raise
         else:
             logging.error(f"Not enough resources on Node {self.name} to schedule Pod {pod.name}.")
             raise Exception(f"Not enough resources on Node {self.name} to schedule Pod {pod.name}.")
@@ -161,7 +144,7 @@ class Node:
 
             logging.info(f"Pod {pod.name} removed from Node {self.name}.")
             # 更新 etcd 中的节点状态
-            self.etcd_client.delete(f"/nodes/{self.name}/pods/{pod.name}")
+            #self.etcd_client.delete(f"/nodes/{self.name}/pods/{pod.name}")
         else:
             logging.warning(f"Attempted to remove non-existent Pod {pod.name} from Node {self.name}.")
 
@@ -178,7 +161,7 @@ class Node:
         """更新节点状态并同步至 etcd。"""
         self.status = status
         logging.info(f"Node {self.name} status updated to {status}.")
-        self.etcd_client.put(f"/nodes/{self.name}/status", status)
+        # self.etcd_client.put(f"/nodes/{self.name}/status", status)
 
     def to_dict(self):
         """将节点信息转换为字典形式，包含资源使用比例，便于序列化。"""

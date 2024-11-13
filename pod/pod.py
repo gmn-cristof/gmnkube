@@ -1,6 +1,5 @@
 import logging
 import json
-from etcd.etcd_client import EtcdClient  # 假设有一个 etcd 客户端类
 
 class Pod:
     def __init__(self, name: str, containers: list = None, namespace: str = 'default', volumes=None):
@@ -13,9 +12,8 @@ class Pod:
         }
         self.volumes = volumes or {}
         self.status = 'Pending'
-        self.etcd_client = EtcdClient()
         self.extract_resources_from_containers()
-        self.sync_to_etcd()
+
 
     def extract_resources_from_containers(self):
         for container in self.containers:
@@ -89,7 +87,7 @@ class Pod:
         self.containers.append(container)
         logging.info(f"Container '{container.name}' added to Pod '{self.name}' in namespace '{self.namespace}'.")
         # 将新的容器状态写入 etcd
-        self.etcd_client.put(f"/pods/{self.name}/containers/{container.name}/status", "Pending")
+        #self.etcd_client.put(f"/pods/{self.name}/containers/{container.name}/status", "Pending")
 
     def remove_container(self, container_name: str):
         """Remove a container from the Pod if it is not running, and update etcd"""
@@ -99,7 +97,7 @@ class Pod:
         self.containers = [c for c in self.containers if c.name != container_name]
         logging.info(f"Container '{container_name}' removed from Pod '{self.name}' in namespace '{self.namespace}'.")
         # 从 etcd 中删除该容器的状态记录
-        self.etcd_client.delete(f"/pods/{self.name}/containers/{container_name}")
+        #self.etcd_client.delete(f"/pods/{self.name}/containers/{container_name}")
 
     def get_status(self):
         """Get the current status of the Pod and its containers."""
@@ -114,8 +112,9 @@ class Pod:
         """将容器转换为 JSON 字符串。"""
         return json.dumps(self.to_dict())
     
-    def sync_to_etcd(self):
-        """同步 Pod 状态到 etcd。"""
-        key = f"/pods/{self.namespace}/{self.name}"  # 采用命名空间来组织
-        value = self.to_json()  # 将 Pod 转换为 JSON 格式
-        self.etcd_client.put(key, value)  # 将数据写入 etcd
+    
+    # def sync_to_etcd(self):
+    #     """同步 Pod 状态到 etcd。"""
+    #     key = f"/pods/{self.namespace}/{self.name}"  # 采用命名空间来组织
+    #     value = self.to_json()  # 将 Pod 转换为 JSON 格式
+    #     self.etcd_client.put(key, value)  # 将数据写入 etcd
