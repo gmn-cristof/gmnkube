@@ -31,13 +31,7 @@ class ContainerManager:
 
             logging.info(f"Container {container.name} created successfully.")
             # 将容器信息写入 etcd
-            self.etcd_client.put(f"/containers/{container.name}", {
-                "image": container.image,
-                "command": container.command,
-                "ports": container.ports,
-                "resources": container.resources,
-                "status": "created"
-            })
+            self.etcd_client.put(f"/containers/{container.name}/status", "running")
         except Exception as e:
             logging.error(f"Failed to create container {container.name}: {e}")
             raise

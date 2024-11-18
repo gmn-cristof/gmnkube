@@ -63,12 +63,12 @@ pod_data = {
             "requests": {
               "cpu": "100m",
               "memory": "256Mi",
-              "gpu": "1"  # 添加 GPU 请求
+              "gpu": "1"  
             },
             "limits": {
               "cpu": "200m",
               "memory": "512Mi",
-              "gpu": "1"  # 添加 GPU 限制
+              "gpu": "1"  
             }
           }
         },
@@ -80,12 +80,12 @@ pod_data = {
             "requests": {
               "cpu": "50m",
               "memory": "128Mi",
-              "gpu": "0"  # 添加 GPU 请求
+              "gpu": "0"  
             },
             "limits": {
               "cpu": "100m",
               "memory": "256Mi",
-              "gpu": "0"  # 添加 GPU 限制
+              "gpu": "0"  
             }
           }
         }

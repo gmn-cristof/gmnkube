@@ -87,12 +87,16 @@ def configure_routes(app):
             return response.json({'message': f"Node '{name}' removed successfully."}, status=200)
         except Exception as e:
             return response.json({'error': str(e)}, status=500)
+        
+
 
     @app.route('/nodes', methods=['GET'])
     async def list_nodes(request: Request):
         try:
             # 从 etcd 获取所有节点信息
+            node_controller._update_etcd_node()
             nodes = node_controller.get_all_nodes()
+            
             return response.json({'nodes': nodes}, status=200)
         except Exception as e:
             logging.error(f"Error while listing nodes: {e}")
@@ -210,7 +214,7 @@ def configure_routes(app):
     @app.route('/pods/<name>', methods=['DELETE'])
     async def delete_pod(request: Request, name: str):
         try:
-            pod_controller.delete_pod(name)
+            pod_controller.delete_pod(name,"default")
             return response.json({'message': f"Pod '{name}' deleted successfully."}, status=200)
         except Exception as e:
             return response.json({'error': str(e)}, status=500)
@@ -269,6 +273,7 @@ def configure_routes(app):
             pod=pod_controller.get_pod(pod_name, namespace)
             ddqn_scheduler.schedule_pod(pod)
             pod_controller.start_pod(pod_name, namespace)
+            node_controller._update_etcd_node()
             return response.json({"status": "success", "message": f"Pod '{pod_name}' scheduled successfully."})
 
         except SanicException as e:

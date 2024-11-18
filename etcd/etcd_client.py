@@ -43,8 +43,6 @@ class EtcdClient:
         """根据前缀从 etcd 读取所有键值对"""
         try:
             values = self.client.get_prefix(prefix)  # 获取前缀的值
-            #logger.info(f"Retrieved values for prefix {prefix}")
-
             result = []
             for kv in values:
                 value = kv[0].decode('utf-8')  # 只取字节字符串部分
@@ -57,9 +55,6 @@ class EtcdClient:
             logger.error(f"Failed to get values with prefix {prefix}: {e}")
             return []
 
-
-
-
     def delete(self, key):
         """从 etcd 删除指定键"""
         try:
@@ -67,6 +62,21 @@ class EtcdClient:
             logger.info(f"Deleted key {key} from etcd")
         except Exception as e:
             logger.error(f"Failed to delete key {key}: {e}")
+
+    def delete_with_prefix(self, prefix):
+        """根据前缀删除 etcd 中的所有键"""
+        try:
+            # 获取所有匹配前缀的键值对
+            values = self.client.get_prefix(prefix)
+            keys_to_delete = [kv[0].decode('utf-8') for kv in values]  # 获取所有的键
+
+            # 删除所有匹配的键
+            for key in keys_to_delete:
+                self.client.delete(key)
+                logger.info(f"Deleted key {key} from etcd")
+
+        except Exception as e:
+            logger.error(f"Failed to delete keys with prefix {prefix}: {e}")
 
     def watch(self, key, callback):
         """监控指定键的变化，并执行回调"""

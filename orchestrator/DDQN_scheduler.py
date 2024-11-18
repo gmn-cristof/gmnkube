@@ -37,7 +37,7 @@ class DDQNScheduler:
         model = tf.keras.Sequential()
         model.add(tf.keras.layers.Input(shape=(self.state_size,)))  # 输入层
         model.add(tf.keras.layers.Dense(4, activation='relu'))  # 隐藏层1
-        model.add(tf.keras.layers.Dense(4, activation='relu'))  # 隐藏层2
+        model.add(tf.keras.layers.Dense(8, activation='relu'))  # 隐藏层2
         model.add(tf.keras.layers.Dense(self.action_size, activation='linear'))  # 输出层
         model.compile(loss='mse', optimizer=tf.keras.optimizers.Adam(learning_rate=self.config['learning_rate']))  # 编译模型
         return model
@@ -64,9 +64,9 @@ class DDQNScheduler:
         # 根据当前状态选择动作
         if self.action_size == 0:
             logging.error("No nodes available for scheduling.")
-            return 0  # 或者你可以返回一个默认值，或者抛出异常
-        if np.random.rand() <= self.config['epsilon']:  # 随机选择动作
-            return random.randrange(self.action_size)
+            return 0  # 或者可以返回一个默认值，或者抛出异常
+        if np.random.rand() <= self.config['epsilon']:  # 选择最佳动作
+            return self.select_best_node(state)
         act_values = self.predict(state)  # 使用模型预测动作值
         return np.argmax(act_values[0])  # 选择最大动作值对应的动作
 
@@ -205,4 +205,48 @@ class DDQNScheduler:
                 elif unit == 'Ti':  # TiB -> 字节
                     return int(mem_value * 1024 * 1024 * 1024 * 1024)
         return 0
+    
+    def calculate_score(self, state):
+        """
+        根据状态计算节点负载评分
+        :param state: 单个节点的状态向量
+        :return: 节点的评分（数值越低越优）
+        """
+        allocated_cpu, allocated_memory, allocated_gpu, \
+        free_cpu, free_memory, free_gpu, \
+        required_cpu, required_memory, required_gpu = state
+
+        # 避免除零问题
+        total_cpu = allocated_cpu + free_cpu if allocated_cpu + free_cpu > 0 else 1
+        total_memory = allocated_memory + free_memory if allocated_memory + free_memory > 0 else 1
+        total_gpu = allocated_gpu + free_gpu if allocated_gpu + free_gpu > 0 else 1
+
+        # 计算资源使用率并加权求和
+        score = (
+            (allocated_cpu / total_cpu)  +
+            (allocated_memory / total_memory)  +
+            (allocated_gpu / total_gpu) 
+        )
+        return score
+
+    def select_best_node(self, states):
+        """
+        选择最佳节点
+        :param states: 所有节点的状态二维数组 (1, nodes_length * features)
+        :return: 最佳节点的序号（0 到 nodes_length-1）
+        """
+        # 将二维数组转化为单节点状态列表
+        num_nodes = states.shape[1] // 9  # 每个节点状态有 9 个特征
+        reshaped_states = states.reshape(num_nodes, 9)
+
+        best_node_index = -1
+        best_score = float('inf')  # 初始化为正无穷
+
+        for index, state in enumerate(reshaped_states):
+            score = self.calculate_score(state)
+            if score < best_score:
+                best_score = score
+                best_node_index = index
+
+        return best_node_index
 

@@ -25,7 +25,9 @@ class PodController:
         try:
             self.pods[namespace][name] = pod
             # 将 Pod 状态同步到 etcd
-            #self.etcd_client.put(f"/pods/{namespace}/{name}", pod.to_json)
+            #print(pod_data)
+            pod_data=json.dumps(pod.to_dict())
+            self.etcd_client.put(f"pods/{namespace}/{name}", pod_data)
             self.etcd_client.put(f"/pods/{namespace}/{name}/status", "Created")
             logging.info(f"Pod '{name}' created successfully in namespace '{namespace}' with containers: {[c.name for c in containers]}.")
         except Exception as e:
@@ -76,7 +78,8 @@ class PodController:
             self.stop_pod(name, namespace)
             del self.pods[namespace][name]
             # 从 etcd 中删除该 Pod 的状态记录
-            self.etcd_client.delete(f"/pods/{namespace}/{name}")
+            self.etcd_client.delete_with_prefix(f"/pods/{namespace}/{name}")
+            self.etcd_client.delete(f"pods/{namespace}/{name}")
             logging.info(f"Pod '{name}' deleted successfully from namespace '{namespace}'.")
         except Exception as e:
             logging.error(f"Failed to delete Pod '{name}' from namespace '{namespace}': {e}")
@@ -127,6 +130,8 @@ class PodController:
             if all_started:
                 pod.status = 'Running'
                 logging.info(f"Pod '{pod.name}' in namespace '{namespace}' is now running.")
+            pod_data=json.dumps(pod.to_dict())
+            self.etcd_client.put(f"pods/{namespace}/{name}", pod_data)
             self.etcd_client.put(f"/pods/{namespace}/{name}/status", "Running")
             logging.info(f"Pod '{name}' started successfully in namespace '{namespace}'.")
         except Exception as e:
@@ -157,7 +162,10 @@ class PodController:
 
             if all_stopped:
                 pod.status = 'Stopped'
+
                 logging.info(f"Pod '{pod.name}' in namespace '{namespace}' has been stopped.")
+            pod_data=json.dumps(pod.to_dict())
+            self.etcd_client.put(f"pods/{namespace}/{name}", pod_data)
             self.etcd_client.put(f"/pods/{namespace}/{name}/status", "Stopped")
             logging.info(f"Pod '{name}' stopped successfully in namespace '{namespace}'.")
         except Exception as e:
@@ -179,6 +187,8 @@ class PodController:
             self.stop_pod(name, namespace)  # 需要加上命名空间参数
             self.start_pod(name, namespace)  # 需要加上命名空间参数
             # 更新 etcd 中的 Pod 状态
+            pod_data=json.dumps(pod.to_dict())
+            self.etcd_client.put(f"pods/{namespace}/{name}", pod_data)
             self.etcd_client.put(f"/pods/{namespace}/{name}/status", "Running")
             logging.info(f"Pod '{name}' in namespace '{namespace}' restarted successfully.")
         except Exception as e:
@@ -193,8 +203,8 @@ class PodController:
 
             for value in pod_values:
                 pod_data = json.loads(value)  # 解析 JSON 字符串
-                namespace = pod_data['metadata']['namespace']  # 获取 Pod 所在的命名空间
-                pod_name = pod_data['metadata']['name']  # 获取 Pod 名称
+                namespace = pod_data['namespace']  # 获取 Pod 所在的命名空间
+                pod_name = pod_data['name']  # 获取 Pod 名称
 
                 if namespace not in pod_info_list:
                     pod_info_list[namespace] = {}
