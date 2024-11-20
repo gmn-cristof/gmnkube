@@ -23,8 +23,8 @@ class NodeController:
         total_cpu = total_cpu if total_cpu != 0 else 0  # 0表示没有分配资源
         total_memory = total_memory if total_memory != 0 else 0
         total_gpu = total_gpu if total_gpu != 0 else 0
-        total_io = total_io if total_io != 0 else 0
-        total_net = total_net if total_net != 0 else 0
+        total_io = total_io if total_io != 0 else 100
+        total_net = total_net if total_net != 0 else 100
         
         # 默认值处理：确保 labels 和 annotations 是字典类型
         labels = labels if labels is not None else {}

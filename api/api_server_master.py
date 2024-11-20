@@ -1,5 +1,6 @@
 from sanic import Sanic, response, SanicException
 from sanic.request import Request
+from tensorflow.keras.utils import plot_model
 from container.container import Container
 from etcd.etcd_client import EtcdClient
 from container.container_manager import ContainerManager
@@ -36,6 +37,9 @@ def create_scheduler():
 @app.listener('before_server_start')
 async def setup_scheduler(app, loop):
     create_scheduler()  # 在服务器启动前创建调度器
+    plot_model(ddqn_scheduler.model, to_file='model_structure.png', show_shapes=True, show_layer_names=True)
+
+    
 
 def configure_routes(app):
     # Node 相关路由
@@ -271,10 +275,10 @@ def configure_routes(app):
 
             # 调用调度器调度 Pod
             pod=pod_controller.get_pod(pod_name, namespace)
-            ddqn_scheduler.schedule_pod(pod)
-            pod_controller.start_pod(pod_name, namespace)
-            node_controller._update_etcd_node()
-            return response.json({"status": "success", "message": f"Pod '{pod_name}' scheduled successfully."})
+            node_name=ddqn_scheduler.schedule_pod(pod)
+            #pod_controller.start_pod(pod_name, namespace)
+            #node_controller._update_etcd_node()
+            return response.json({"status": "success", "message": f"Pod '{pod_name}' scheduled successfully at '{node_name}'."})
 
         except SanicException as e:
             return response.json({"status": "error", "message": str(e)}, status=400)

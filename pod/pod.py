@@ -12,31 +12,28 @@ class Pod:
         }
         self.volumes = volumes or {}
         self.status = 'Pending'
-        self.extract_resources_from_containers()
+        self._aggregate_resources()
 
-
-    def extract_resources_from_containers(self):
+    def _aggregate_resources(self):
+        """从所有容器中提取资源并计算总量。"""
         for container in self.containers:
+            if not hasattr(container, 'resources'):
+                logging.warning(f"Container {container} has no 'resources' attribute.")
+                continue
+
             requests = container.resources.get('requests', {})
             limits = container.resources.get('limits', {})
-            
-            if isinstance(requests, dict):
-                self._add_resources(self.resources['requests'], requests)
-            else:
-                logging.warning(f"Invalid requests format for container {container.name}: {requests}")
 
-            if isinstance(limits, dict):
-                self._add_resources(self.resources['limits'], limits)
-            else:
-                logging.warning(f"Invalid limits format for container {container.name}: {limits}")
+            self._add_resource_totals(self.resources['requests'], requests)
+            self._add_resource_totals(self.resources['limits'], limits)
 
-    def _add_resources(self, total_resources, container_resources):
+    def _add_resource_totals(self, total_resources, container_resources):
+        """合并容器资源到总资源。"""
         for resource_type, value in container_resources.items():
-            if not isinstance(value, str):  # 确保资源是字符串
-                logging.warning(f"Invalid resource format for {resource_type}: {value}")
+            if not isinstance(value, str):
+                logging.warning(f"Invalid resource value for {resource_type}: {value}. Expected string.")
                 continue
-            
-            # 直接将值存入总资源字典，而不是嵌套字典
+
             if resource_type not in total_resources:
                 total_resources[resource_type] = value
             else:
@@ -46,28 +43,40 @@ class Pod:
                     resource_type
                 )
 
-    def _combine_resources(self, existing_amount, new_amount, resource_type):
+    def _combine_resources(self, current, new, resource_type):
+        """合并两种资源值，支持 CPU、内存、GPU。"""
         if resource_type == 'cpu':
-            return f"{self._parse_cpu(existing_amount) + self._parse_cpu(new_amount)}m"
+            return f"{self._parse_cpu(current) + self._parse_cpu(new)}m"
         elif resource_type == 'memory':
-            return f"{self._parse_memory(existing_amount) + self._parse_memory(new_amount)}Mi"
+            return f"{self._parse_memory(current) + self._parse_memory(new)}Mi"
         elif resource_type == 'gpu':
-            return self._parse_gpu(existing_amount) + self._parse_gpu(new_amount)
-        return existing_amount
+            return str(self._parse_gpu(current) + self._parse_gpu(new))
+        else:
+            logging.warning(f"Unknown resource type: {resource_type}.")
+            return current
 
     def _parse_cpu(self, cpu_str):
-        return int(cpu_str[:-1]) if isinstance(cpu_str, str) and cpu_str.endswith('m') else int(cpu_str) * 1000
+        """解析 CPU 值，支持 'm' 单位。"""
+        if cpu_str.endswith('m'):
+            return int(cpu_str[:-1])  # 转换为 millicores
+        return int(cpu_str) * 1000  # 假设为 cores，转换为 millicores
 
     def _parse_memory(self, memory_str):
-        if isinstance(memory_str, str):
-            if memory_str.endswith('Gi'):
-                return int(memory_str[:-2]) * 1024
-            if memory_str.endswith('Mi'):
-                return int(memory_str[:-2])
-        return int(memory_str)
+        """解析内存值，支持 'Mi' 和 'Gi' 单位。"""
+        if memory_str.endswith('Gi'):
+            return int(memory_str[:-2]) * 1024  # 转换为 Mi
+        elif memory_str.endswith('Mi'):
+            return int(memory_str[:-2])  # 保留 Mi
+        logging.warning(f"Unexpected memory format: {memory_str}. Defaulting to 0.")
+        return 0
 
     def _parse_gpu(self, gpu_str):
-        return int(gpu_str) if isinstance(gpu_str, (int, str)) else 0
+        """解析 GPU 值，确保返回整数。"""
+        try:
+            return int(gpu_str)
+        except ValueError:
+            logging.warning(f"Invalid GPU format: {gpu_str}. Defaulting to 0.")
+            return 0
 
     def to_dict(self):
         return {
