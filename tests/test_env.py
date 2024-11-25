@@ -1,6 +1,5 @@
 import requests
-import random
-import time
+import random,time
 
 BASE_URL = "http://localhost:8001"
 NODE_COUNT = 10
@@ -35,8 +34,6 @@ for i in range(1, NODE_COUNT + 1):
     }
     response = requests.post(f"{BASE_URL}/nodes", json=node_data)
     print(f"Node {node_name} creation status: {response.status_code}")
-
-time.sleep(0.2)
 
 # 创建 Pods 并进行调度
 pod_names = []
@@ -86,7 +83,6 @@ for j in range(1, POD_COUNT + 1):
     }
     response = requests.post(f"{BASE_URL}/pods", json=pod_data)
     print(f"Pod {pod_name} creation status: {response.status_code}")
-    time.sleep(0.2)
     
 for l in range(1, POD_COUNT + 1):
     pod_name = f"example-pod-{l}"
@@ -110,12 +106,75 @@ for l in range(1, POD_COUNT + 1):
         except ValueError:
             error_details = response.text
         print(f"Pod {pod_name} scheduling failed with status code {response.status_code}: {error_details}")
+    time.sleep(1)
 
 # 保存调度历史图像
 try:
     response = requests.post(
         f"{BASE_URL}/save_{SCHEDULE_MATHOD}",
         json={"file_path": "output/kube_schedule_history.png"}
+    )
+    response.raise_for_status()
+    if 'application/json' in response.headers.get('Content-Type', ''):
+        print("Response:", response.json())
+    else:
+        print("Response is not JSON:", response.text)
+except requests.exceptions.RequestException as e:
+    print(f"An error occurred while saving schedule: {e}")
+
+
+try:
+    # 添加超时参数
+    response = requests.delete(f"{BASE_URL}/remove_all_pods", timeout=10)
+    
+    # 尝试解析 JSON 数据
+    try:
+        data = response.json()
+    except ValueError:
+        data = None
+
+    # 检查响应状态码
+    response.raise_for_status()  
+
+    # 输出响应结果
+    print("Response:", data if data else response.text)
+
+except requests.exceptions.Timeout:
+    print("The request timed out. Please try again later.")
+except requests.exceptions.RequestException as e:
+    print(f"An error occurred: {e}")
+
+SCHEDULE_MATHOD = 'DDQN_schedule'
+
+for l in range(1, POD_COUNT + 1):
+    pod_name = f"example-pod-{l}"
+    schedule_data = {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": {
+            "name": pod_name,
+            "namespace": "default",
+            "status": "pending"
+        }
+    }
+    response = requests.post(f"{BASE_URL}/{SCHEDULE_MATHOD}", json=schedule_data)
+    if response.status_code == 200:
+        result = response.json()
+        message = result.get("message", "No message provided")
+        print(f"Pod {pod_name} scheduling status: {response.status_code}, Message: {message}")
+    else:
+        try:
+            error_details = response.json()
+        except ValueError:
+            error_details = response.text
+        print(f"Pod {pod_name} scheduling failed with status code {response.status_code}: {error_details}")
+    time.sleep(1)
+
+# 保存调度历史图像
+try:
+    response = requests.post(
+        f"{BASE_URL}/save_{SCHEDULE_MATHOD}",
+        json={"file_path": "output/DDQN_schedule_history.png"}
     )
     response.raise_for_status()
     if 'application/json' in response.headers.get('Content-Type', ''):

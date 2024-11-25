@@ -9,6 +9,7 @@ from container.container_runtime import ContainerRuntime
 from pod.pod_controller import PodController
 from container.image_handler import ImageHandler
 from node.node_controller import NodeController
+from orchestrator.DDQN_scheduler import DDQNScheduler
 
 from orchestrator.kube_scheduler_plus import Kube_Scheduler_Plus
 from sanic_cors import CORS
@@ -20,7 +21,7 @@ CORS(app)
 
 # 全局唯一的调度器实例
 ddqn_scheduler = None
-use_ddqn = False
+use_ddqn = True
 
 # 初始化控制器
 etcd_client = EtcdClient()
@@ -33,11 +34,14 @@ kube_scheduler = Kube_Scheduler_Plus(node_controller)
 
 def create_scheduler():
     global ddqn_scheduler
-    if ddqn_scheduler is None and use_ddqn is True:
-        from orchestrator.DDQN_scheduler import DDQNScheduler
+    if ddqn_scheduler is None:
         ddqn_scheduler = DDQNScheduler(node_controller)
 
-    
+@app.listener('before_server_start')
+async def setup_scheduler(app, loop):
+    create_scheduler()  # 在服务器启动前创建调度器
+
+
 
 def configure_routes(app):
     # Node 相关路由
@@ -283,20 +287,24 @@ def configure_routes(app):
         except Exception as e:
             return response.json({"status": "error", "message": f"Failed to schedule Pod: {str(e)}"}, status=500)
 
-    @app.delete("/pods")
+    @app.route("/remove_all_pods", methods=['DELETE'])
     async def remove_all_pods(request):
         """
         清空集群中所有 Pods。
-        HTTP DELETE /pods
+        HTTP DELETE /remove_all_pods
         """
         try:
-            # 假设 node_controller 是全局实例
+            # 调用移除所有 Pod 的方法
             node_controller.remove_all_pods()
             
+            # 成功响应
             return response.json({"message": "All Pods have been removed from the cluster."}, status=200)
+
         except Exception as e:
-            # 捕获异常并返回错误信息
-            return response.json({"error": str(e)}, status=500)
+            # 捕获并打印详细的错误信息
+            logging.error(f"Error occurred while removing pods: {e}", exc_info=True)
+            # 返回 500 错误，并提供详细的错误信息
+            return response.json({"error": "An error occurred while removing pods.", "details": str(e)}, status=500)
         
     @app.route("/kube_schedule", methods=["POST"])
     async def kube_schedule_pod(request):
@@ -323,6 +331,58 @@ def configure_routes(app):
             return response.json({"status": "error", "message": str(e)}, status=400)
         except Exception as e:
             return response.json({"status": "error", "message": f"Failed to schedule Pod: {str(e)}"}, status=500)
+
+    @app.route("/DDQN_schedule_history", methods=["GET"])
+    async def get_DDQN_schedule_history(request):
+        """
+        获取调度历史记录的路由。
+        返回每次调度的 Pod 名称、目标节点、奖励和时间戳。
+        """
+        try:
+            # 从 node_controller 获取调度历史记录
+            schedule_history = ddqn_scheduler.get_schedule_history()
+
+            # 格式化为前端友好的响应
+            formatted_history = [
+                {
+                    "pod_name": entry.get("pod_name"),
+                    "node_name": entry.get("node_name"),
+                    "reward": entry.get("reward"),
+                    "timestamp": entry.get("timestamp").strftime("%Y-%m-%d %H:%M:%S"),
+                }
+                for entry in schedule_history
+            ]
+
+            return response.json({"schedule_history": formatted_history}, status=200)
+
+        except Exception as e:
+            return response.json({"error": str(e)}, status=500)
+
+    @app.route("/kube_schedule_history", methods=["GET"])
+    async def get_kube_schedule_history(request):
+        """
+        获取调度历史记录的路由。
+        返回每次调度的 Pod 名称、目标节点、奖励和时间戳。
+        """
+        try:
+            # 从 node_controller 获取调度历史记录
+            schedule_history = kube_scheduler.get_schedule_history()
+
+            # 格式化为前端友好的响应
+            formatted_history = [
+                {
+                    "pod_name": entry.get("pod_name"),
+                    "node_name": entry.get("node_name"),
+                    "reward": entry.get("reward"),
+                    "timestamp": entry.get("timestamp").strftime("%Y-%m-%d %H:%M:%S"),
+                }
+                for entry in schedule_history
+            ]
+
+            return response.json({"schedule_history": formatted_history}, status=200)
+
+        except Exception as e:
+            return response.json({"error": str(e)}, status=500)
 
     @app.route("/save_DDQN_schedule", methods=["POST"])
     async def save_DDQN_schedule(request):
@@ -356,6 +416,7 @@ def configure_routes(app):
         except Exception as e:
             # 捕获异常并返回错误信息
             return response.json({"error": str(e)}, status=500)
+        
 
 
             

@@ -1,4 +1,4 @@
-import logging
+import logging,re
 import psutil
 import GPUtil
 
@@ -136,11 +136,25 @@ class Node:
         if pod in self.pods:
             self.pods.remove(pod)  # 从节点中移除 Pod
             # 释放相应资源
-            self.allocated_cpu -= pod.resources.get("requests", {}).get("cpu", 0)
-            self.allocated_memory -= pod.resources.get("requests", {}).get("memory", 0)
-            self.allocated_gpu -= pod.resources.get("requests", {}).get("gpu", 0)
+            THRESHOLD = 1e-6  # 定义误差阈值
+
+            # 释放相应资源
+            self.allocated_cpu -= self.parse_cpu(pod.resources.get('requests', {}).get('cpu', 0))
+            self.allocated_cpu = 0.0 if abs(self.allocated_cpu) < THRESHOLD else self.allocated_cpu
+
+            self.allocated_memory -= self.parse_memory(pod.resources.get('requests', {}).get('memory', 0))
+            self.allocated_memory = 0.0 if abs(self.allocated_memory) < THRESHOLD else self.allocated_memory
+
+            self.allocated_gpu -= self.parse_gpu(pod.resources.get('requests', {}).get('gpu', 0))
+            self.allocated_gpu = 0.0 if abs(self.allocated_gpu) < THRESHOLD else self.allocated_gpu
+
             self.allocated_io -= pod.resources.get("requests", {}).get("io", 0)
+            self.allocated_io = 0.0 if abs(self.allocated_io) < THRESHOLD else self.allocated_io
+
             self.allocated_net -= pod.resources.get("requests", {}).get("net", 0)
+            self.allocated_net = 0.0 if abs(self.allocated_net) < THRESHOLD else self.allocated_net
+
+
 
             logging.info(f"Pod {pod.name} removed from Node {self.name}.")
             # 更新 etcd 中的节点状态
@@ -223,3 +237,48 @@ class Node:
         self.total_net = node_info['net']
 
         logging.info(f"Node {self.name} loaded resources: {node_info}")
+
+    def parse_cpu(self, cpu_str):
+        """解析 CPU 请求，返回核心数"""
+        if isinstance(cpu_str, str):
+            # 使用正则表达式捕获数字部分和单位（m 或空）
+            match = re.match(r"(\d+(\.\d+)?)(m|)", cpu_str.strip())  # 加强正则表达式的匹配，允许小数部分
+            if match:
+                cpu_value, _, unit = match.groups()
+                cpu_value = float(cpu_value)  # 转换为浮动数
+
+                if unit == 'm':  # 如果是毫核，转换为核心数
+                    return round(cpu_value / 1000, 6)  # 将毫核转换为核心数并控制精度
+                else:
+                    return round(cpu_value, 6)  # 核心数本身，控制精度
+        return 0.0
+
+    def parse_memory(self, mem_str):
+        """解析内存请求，返回字节数"""
+        if isinstance(mem_str, str):
+            match = re.match(r"(\d+)(Ki|Mi|Gi|Ti)", mem_str)
+            if match:
+                mem_value, unit = match.groups()
+                mem_value = float(mem_value)
+                if unit == 'Ki':  # KiB -> 字节
+                    return int(mem_value * 1024)
+                elif unit == 'Mi':  # MiB -> 字节
+                    return int(mem_value * 1024 * 1024)
+                elif unit == 'Gi':  # GiB -> 字节
+                    return int(mem_value * 1024 * 1024 * 1024)
+                elif unit == 'Ti':  # TiB -> 字节
+                    return int(mem_value * 1024 * 1024 * 1024 * 1024)
+        return 0
+
+    def parse_gpu(self, gpu_str):
+        """解析 GPU 请求，返回 GPU 数量"""
+        if isinstance(gpu_str, str):
+            match = re.match(r"(\d+)(Gpu|)", gpu_str, re.IGNORECASE)  # 匹配数字和 'Gpu' 或空
+            if match:
+                gpu_value, unit = match.groups()
+                gpu_value = int(gpu_value)
+                if unit.lower() == 'gpu':  # 如果单位为 'GPU'，直接返回数量
+                    return gpu_value
+                else:
+                    return gpu_value  # 如果没有单位，也直接返回数量
+        return 0  # 默认返回 0，表示没有请求 GPU

@@ -50,10 +50,7 @@ class Kube_Scheduler_Plus:
         if (node.total_cpu - node.allocated_cpu) < required_cpu or \
            (node.total_memory - node.allocated_memory) < required_memory or \
            (node.total_gpu - node.allocated_gpu) < required_gpu:
-            print(f"Node {node.name} insufficient resources:")
-            print(f"Remaining CPU: {node.total_cpu - node.allocated_cpu}, Required: {required_cpu}")
-            print(f"Remaining Memory: {node.total_memory - node.allocated_memory}, Required: {required_memory}")
-            print(f"Remaining GPU: {node.total_gpu - node.allocated_gpu}, Required: {required_gpu}")
+
             return False  # 资源不足，返回 False
         return True  # 资源充足，返回 True
 
@@ -96,8 +93,9 @@ class Kube_Scheduler_Plus:
         logging.info(f"Scheduled Pod {pod.name} on node {selected_node.name}.")
 
         # 调用 NodeController 将 Pod 调度到目标节点
-        self.node_controller.schedule_pod_to_node(pod, selected_node.name)
         reward=self._calculate_reward(selected_node.name,pod)
+        self.node_controller.schedule_pod_to_node(pod, selected_node.name)
+        
         self.schedule_history.append({
             'pod_name': pod.name,
             'node_name': selected_node.name,
@@ -161,9 +159,10 @@ class Kube_Scheduler_Plus:
             if (node.total_cpu - node.allocated_cpu) < required_cpu or \
                (node.total_memory - node.allocated_memory) < required_memory or \
                (node.total_gpu - node.allocated_gpu) < required_gpu:
-                print(node.total_cpu - node.allocated_cpu,node.total_memory - node.allocated_memory,node.total_gpu - node.allocated_gpu)
-                print(required_cpu,required_memory,required_gpu)
-                print(f"{node_name} has no enough resources to schedule  {pod.name}")
+                print(f"Node {node.name} insufficient resources:")
+                print(f"Remaining CPU: {node.total_cpu - node.allocated_cpu}, Required: {required_cpu}")
+                print(f"Remaining Memory: {node.total_memory - node.allocated_memory}, Required: {required_memory}")
+                print(f"Remaining GPU: {node.total_gpu - node.allocated_gpu}, Required: {required_gpu}")
                 return -1  # 资源不足，给予负奖励
             
             cpu_usage_ratio = node.allocated_cpu / node.total_cpu if node.total_cpu > 0 else 0
@@ -186,6 +185,9 @@ class Kube_Scheduler_Plus:
 
             return reward  # 返回计算的奖励
         return -1  # 如果节点不就绪，返回惩罚
+    
+    def get_schedule_history(self):
+        return self.schedule_history
     
     def save_schedule_history(self, file_path="schedule_history.png"):
         """

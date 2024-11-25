@@ -120,7 +120,7 @@ class NodeController:
         遍历所有节点，移除节点上的所有 Pod。
         """
         # 遍历所有节点
-        for node in self.nodes.items():
+        for node_name, node in self.nodes.items():  # 解构元组为 `node_name` 和 `node_instance`
             # 获取当前节点的所有 Pod
             pods_to_remove = list(node.pods)  # 假设每个节点有一个 `pods` 集合/列表
 
@@ -132,6 +132,7 @@ class NodeController:
             self._update_etcd_node(node)
 
         logging.info("[NodeController-INFO]: All Pods have been removed from the cluster.")
+
 
 
     def update_node_status(self, node_name, status):

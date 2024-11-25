@@ -135,9 +135,10 @@ class DDQNScheduler:
         #print(6666666666666666666666)
         try:
             # 尝试将 Pod 调度到选定的节点
+            reward = self._calculate_reward(node_name, pod)  # 计算奖励
             self.node_controller.schedule_pod_to_node(pod, node_name)
             next_state = self._get_state(pod)  # 获取下一个状态
-            reward = self._calculate_reward(node_name, pod)  # 计算奖励
+            
             
             # 记录奖励信息
             logging.info(f"[DDQN-Scheduler-INFO]: Pod {pod.name} scheduled to Node {node_name} with reward: {reward}")
@@ -193,9 +194,10 @@ class DDQNScheduler:
             if (node.total_cpu - node.allocated_cpu) < required_cpu or \
                (node.total_memory - node.allocated_memory) < required_memory or \
                (node.total_gpu - node.allocated_gpu) < required_gpu:
-                print(node.total_cpu - node.allocated_cpu,node.total_memory - node.allocated_memory,node.total_gpu - node.allocated_gpu)
-                print(required_cpu,required_memory,required_gpu)
-                print(f"{node_name} has no enough resources to schedule  {pod.name}")
+                print(f"Node {node.name} insufficient resources:")
+                print(f"Remaining CPU: {node.total_cpu - node.allocated_cpu}, Required: {required_cpu}")
+                print(f"Remaining Memory: {node.total_memory - node.allocated_memory}, Required: {required_memory}")
+                print(f"Remaining GPU: {node.total_gpu - node.allocated_gpu}, Required: {required_gpu}")
                 return -1  # 资源不足，给予负奖励
             
             cpu_usage_ratio = node.allocated_cpu / node.total_cpu if node.total_cpu > 0 else 0
@@ -313,6 +315,9 @@ class DDQNScheduler:
                 best_node_index = index
 
         return best_node_index
+    
+    def get_schedule_history(self):
+        return self.schedule_history
     
     def save_schedule_history(self, file_path="schedule_history.png"):
         """
