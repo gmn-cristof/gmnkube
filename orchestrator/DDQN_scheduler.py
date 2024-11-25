@@ -3,7 +3,9 @@ import tensorflow as tf
 from collections import deque
 import random
 import logging
-import re
+import re,datetime
+import matplotlib.pyplot as plt
+import os
 
 NODE_COUNT = 10
 POD_COUNT = 30
@@ -28,6 +30,7 @@ class DDQNScheduler:
         self.target_model = self._build_model()  # 目标模型
         self.update_target_frequency = 10  # 更新目标网络的频率
         self.update_counter = 0  # 更新计数器
+        self.schedule_history = []  # 每次调度的 Pod 名称、目标节点、奖励和时间戳
 
     def _update_action_size(self):
         # 更新 action_size 和模型的输出层大小
@@ -138,7 +141,13 @@ class DDQNScheduler:
             
             # 记录奖励信息
             logging.info(f"[DDQN-Scheduler-INFO]: Pod {pod.name} scheduled to Node {node_name} with reward: {reward}")
-            
+            # 调度成功后，记录调度历史
+            self.schedule_history.append({
+                'pod_name': pod.name,
+                'node_name': node_name,
+                'reward': reward,
+                'timestamp': datetime.datetime.now()
+            })
             done = False  # 结束标志
             self.remember(state, action, reward, next_state, done)  # 记住经历
             self.replay()  # 进行回放训练
@@ -184,8 +193,11 @@ class DDQNScheduler:
             if (node.total_cpu - node.allocated_cpu) < required_cpu or \
                (node.total_memory - node.allocated_memory) < required_memory or \
                (node.total_gpu - node.allocated_gpu) < required_gpu:
+                print(node.total_cpu - node.allocated_cpu,node.total_memory - node.allocated_memory,node.total_gpu - node.allocated_gpu)
+                print(required_cpu,required_memory,required_gpu)
+                print(f"{node_name} has no enough resources to schedule  {pod.name}")
                 return -1  # 资源不足，给予负奖励
-
+            
             cpu_usage_ratio = node.allocated_cpu / node.total_cpu if node.total_cpu > 0 else 0
             memory_usage_ratio = node.allocated_memory / node.total_memory if node.total_memory > 0 else 0
             gpu_usage_ratio = node.allocated_gpu / node.total_gpu if node.total_gpu > 0 else 0
@@ -301,4 +313,50 @@ class DDQNScheduler:
                 best_node_index = index
 
         return best_node_index
+    
+    def save_schedule_history(self, file_path="schedule_history.png"):
+        """
+        将调度历史记录可视化并保存为图片。
+        :param file_path: 保存的文件路径，默认为 'schedule_history.png'
+        """
+        # 检查是否有历史记录
+        if not self.schedule_history:
+            print("No scheduling history available for visualization.")
+            return
+
+        # 提取数据
+        timestamps = [record['timestamp'] for record in self.schedule_history]
+        pod_names = [record['pod_name'] for record in self.schedule_history]
+        node_names = [record['node_name'] for record in self.schedule_history]
+        rewards = [record['reward'] for record in self.schedule_history]
+
+        # 转换时间戳为数字格式
+        time_numeric = [ts.timestamp() for ts in timestamps]
+
+        # 创建图形
+        plt.figure(figsize=(12, 6))
+
+        # 子图1：节点分布
+        plt.subplot(2, 1, 1)
+        plt.scatter(time_numeric, node_names, c='blue', alpha=0.7, label='Scheduled Nodes')
+        plt.yticks(rotation=45)
+        plt.xlabel("Time")
+        plt.ylabel("Node Names")
+        plt.title("Pod Scheduling History")
+        plt.legend()
+
+        # 子图2：奖励值趋势
+        plt.subplot(2, 1, 2)
+        plt.plot(time_numeric, rewards, '-o', color='green', label='Reward Trend')
+        plt.xlabel("Time")
+        plt.ylabel("Reward")
+        plt.title("Reward Over Time")
+        plt.legend()
+
+        # 调整布局并保存图形
+        plt.tight_layout()
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)  # 确保文件目录存在
+        plt.savefig(file_path)
+        plt.close()
+        print(f"Schedule history visualization saved to {file_path}.")
 

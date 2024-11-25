@@ -59,7 +59,7 @@ class NodeController:
         node_info_list = {}
         try:
             logging.info("Attempting to get nodes with prefix 'nodes/'")
-            response = self.etcd_client.get("nodes/", prefix=True)  # 确保使用前缀获取
+            response = self.etcd_client.get_with_prefix("nodes/")  # 确保使用前缀获取
             logging.info(f"Response received: {response}")
 
             if response is None :
@@ -114,6 +114,25 @@ class NodeController:
 
         # 更新节点信息到 etcd
         self._update_etcd_node(node)
+
+    def remove_all_pods(self):
+        """清空集群中所有 Pod。
+        遍历所有节点，移除节点上的所有 Pod。
+        """
+        # 遍历所有节点
+        for node in self.nodes.items():
+            # 获取当前节点的所有 Pod
+            pods_to_remove = list(node.pods)  # 假设每个节点有一个 `pods` 集合/列表
+
+            # 遍历并移除每个 Pod
+            for pod in pods_to_remove:
+                node.remove_pod(pod)  # 调用方法移除 Pod
+            
+            # 更新节点信息到 etcd
+            self._update_etcd_node(node)
+
+        logging.info("[NodeController-INFO]: All Pods have been removed from the cluster.")
+
 
     def update_node_status(self, node_name, status):
         """更新节点的状态.
@@ -182,18 +201,6 @@ class NodeController:
         except Exception as e:
             logging.error(f"Failed to add Pod '{pod.name}': {e}")
 
-    def remove_pod_from_node(self, pod, node_name):
-        """Remove a Pod from a specified node and release resources.
-
-        :param pod: The Pod object to remove
-        :param node_name: The name of the target node
-        """
-        node = self.nodes.get(node_name)
-        if not node:
-            logging.error(f"Node {node_name} does not exist.")
-            raise ValueError(f"Node {node_name} does not exist.")
-        self.etcd_client.delete(f"/nodes/{self.name}/pods/{pod.name}")
-        node.remove_pod(pod)
     
     def change_node_status(self, status, node_name):
         """change node status of a specified node

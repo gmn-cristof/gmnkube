@@ -5,6 +5,7 @@ import time
 BASE_URL = "http://localhost:8001"
 NODE_COUNT = 10
 POD_COUNT = 25
+SCHEDULE_MATHOD = "kube_schedule"
 
 IMAGES = [
     "docker.m.daocloud.io/library/nginx:latest",
@@ -14,13 +15,16 @@ IMAGES = [
 ]
 
 # 创建节点
+node_names = []
 for i in range(1, NODE_COUNT + 1):
+    node_name = f"node{i}"
+    node_names.append(node_name)
     node_data = {
-        "name": f"node{i}",
+        "name": node_name,
         "ip_address": f"192.168.1.{i}",
-        "total_cpu": random.choice([  4, 8]),
-        "total_memory": random.choice([ 4, 8]) * 1024 * 1024 * 1024,
-        "total_gpu": random.choice([ 2, 4]),
+        "total_cpu": random.choice([4, 8]),
+        "total_memory": random.choice([4, 8]) * 1024 * 1024 * 1024,
+        "total_gpu": random.choice([2, 4]),
         "labels": {
             "zone": random.choice(["us-west", "us-east", "eu-central"]),
             "environment": random.choice(["production", "development"])
@@ -30,12 +34,16 @@ for i in range(1, NODE_COUNT + 1):
         }
     }
     response = requests.post(f"{BASE_URL}/nodes", json=node_data)
-    print(f"Node {i} creation status: {response.status_code}")
+    print(f"Node {node_name} creation status: {response.status_code}")
 
-time.sleep(1)
+time.sleep(0.2)
 
 # 创建 Pods 并进行调度
+pod_names = []
 for j in range(1, POD_COUNT + 1):
+    pod_name = f"example-pod-{j}"
+    pod_names.append(pod_name)
+    
     # 随机生成 1 到 3 个容器
     container_count = random.randint(1, 3)
     containers = [
@@ -58,12 +66,11 @@ for j in range(1, POD_COUNT + 1):
         }
         for k in range(1, container_count + 1)
     ]
-    
     pod_data = {
         "apiVersion": "v1",
         "kind": "Pod",
         "metadata": {
-            "name": f"example-pod-{j}",
+            "name": pod_name,
             "namespace": "default",
             "status": "pending"
         },
@@ -78,26 +85,52 @@ for j in range(1, POD_COUNT + 1):
         }
     }
     response = requests.post(f"{BASE_URL}/pods", json=pod_data)
-    print(f"Pod {j} creation status: {response.status_code}")
-    time.sleep(1)
-
+    print(f"Pod {pod_name} creation status: {response.status_code}")
+    time.sleep(0.2)
+    
+for l in range(1, POD_COUNT + 1):
+    pod_name = f"example-pod-{l}"
     schedule_data = {
         "apiVersion": "v1",
         "kind": "Pod",
         "metadata": {
-            "name": f"example-pod-{j}",
+            "name": pod_name,
             "namespace": "default",
             "status": "pending"
         }
     }
-    response = requests.post(f"{BASE_URL}/DDQN_schedule", json=schedule_data)
+    response = requests.post(f"{BASE_URL}/{SCHEDULE_MATHOD}", json=schedule_data)
     if response.status_code == 200:
         result = response.json()
         message = result.get("message", "No message provided")
-        print(f"Pod {j} scheduling status: {response.status_code}, Message: {message}")
+        print(f"Pod {pod_name} scheduling status: {response.status_code}, Message: {message}")
     else:
         try:
             error_details = response.json()
         except ValueError:
             error_details = response.text
-        print(f"Pod {j} scheduling failed with status code {response.status_code}: {error_details}")
+        print(f"Pod {pod_name} scheduling failed with status code {response.status_code}: {error_details}")
+
+# 保存调度历史图像
+try:
+    response = requests.post(
+        f"{BASE_URL}/save_{SCHEDULE_MATHOD}",
+        json={"file_path": "output/kube_schedule_history.png"}
+    )
+    response.raise_for_status()
+    if 'application/json' in response.headers.get('Content-Type', ''):
+        print("Response:", response.json())
+    else:
+        print("Response is not JSON:", response.text)
+except requests.exceptions.RequestException as e:
+    print(f"An error occurred while saving schedule: {e}")
+
+# # 删除 Pods
+# for pod_name in pod_names:
+#     response = requests.delete(f"{BASE_URL}/pods/{pod_name}")
+#     print(f"Pod {pod_name} deletion status: {response.status_code}")
+
+# # 删除 Nodes
+# for node_name in node_names:
+#     response = requests.delete(f"{BASE_URL}/nodes/{node_name}")
+#     print(f"Node {node_name} deletion status: {response.status_code}")

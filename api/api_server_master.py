@@ -1,6 +1,7 @@
 from sanic import Sanic, response, SanicException
+from sanic.response import json
 from sanic.request import Request
-from tensorflow.keras.utils import plot_model
+#from tensorflow.keras.utils import plot_model
 from container.container import Container
 from etcd.etcd_client import EtcdClient
 from container.container_manager import ContainerManager
@@ -8,7 +9,7 @@ from container.container_runtime import ContainerRuntime
 from pod.pod_controller import PodController
 from container.image_handler import ImageHandler
 from node.node_controller import NodeController
-from orchestrator.DDQN_scheduler import DDQNScheduler
+
 from orchestrator.kube_scheduler_plus import Kube_Scheduler_Plus
 from sanic_cors import CORS
 import logging,json
@@ -19,6 +20,7 @@ CORS(app)
 
 # 全局唯一的调度器实例
 ddqn_scheduler = None
+use_ddqn = False
 
 # 初始化控制器
 etcd_client = EtcdClient()
@@ -31,13 +33,9 @@ kube_scheduler = Kube_Scheduler_Plus(node_controller)
 
 def create_scheduler():
     global ddqn_scheduler
-    if ddqn_scheduler is None:
+    if ddqn_scheduler is None and use_ddqn is True:
+        from orchestrator.DDQN_scheduler import DDQNScheduler
         ddqn_scheduler = DDQNScheduler(node_controller)
-
-@app.listener('before_server_start')
-async def setup_scheduler(app, loop):
-    create_scheduler()  # 在服务器启动前创建调度器
-    plot_model(ddqn_scheduler.model, to_file='model_structure.png', show_shapes=True, show_layer_names=True)
 
     
 
@@ -260,7 +258,7 @@ def configure_routes(app):
         
     #DDQN 调度相关路由
     @app.route("/DDQN_schedule", methods=["POST"])
-    async def schedule_pod(request):
+    async def DDQN_schedule_pod(request):
         """调度一个 Pod 到合适的节点."""
         try:
             pod_data = request.json  # 从请求中获取 Pod 数据
@@ -284,7 +282,83 @@ def configure_routes(app):
             return response.json({"status": "error", "message": str(e)}, status=400)
         except Exception as e:
             return response.json({"status": "error", "message": f"Failed to schedule Pod: {str(e)}"}, status=500)
+
+    @app.delete("/pods")
+    async def remove_all_pods(request):
+        """
+        清空集群中所有 Pods。
+        HTTP DELETE /pods
+        """
+        try:
+            # 假设 node_controller 是全局实例
+            node_controller.remove_all_pods()
+            
+            return response.json({"message": "All Pods have been removed from the cluster."}, status=200)
+        except Exception as e:
+            # 捕获异常并返回错误信息
+            return response.json({"error": str(e)}, status=500)
         
+    @app.route("/kube_schedule", methods=["POST"])
+    async def kube_schedule_pod(request):
+        """调度一个 Pod 到合适的节点."""
+        try:
+            pod_data = request.json  # 从请求中获取 Pod 数据
+
+            # 提取 Pod 的元数据和规范
+            metadata = pod_data.get("metadata", {})
+            #spec = pod_data.get("spec", {})
+
+            pod_name = metadata.get("name")
+            namespace = metadata.get("namespace", "default")
+
+
+            # 调用调度器调度 Pod
+            pod=pod_controller.get_pod(pod_name, namespace)
+            node_name=kube_scheduler.schedule_pod(pod)
+            #pod_controller.start_pod(pod_name, namespace)
+            #node_controller._update_etcd_node()
+            return response.json({"status": "success", "message": f"Pod '{pod_name}' scheduled successfully at '{node_name}'."})
+
+        except SanicException as e:
+            return response.json({"status": "error", "message": str(e)}, status=400)
+        except Exception as e:
+            return response.json({"status": "error", "message": f"Failed to schedule Pod: {str(e)}"}, status=500)
+
+    @app.route("/save_DDQN_schedule", methods=["POST"])
+    async def save_DDQN_schedule(request):
+        try:
+            # 从 POST 请求中获取文件路径（可选参数），默认为 "output/schedule_history.png"
+            file_path = request.json.get("file_path", "output/schedule_history.png")
+
+            # 调用调度器的保存方法并获取结果
+            ddqn_scheduler.save_schedule_history(file_path)
+
+            # 返回成功的 JSON 响应
+            return response.json({"message": "Schedule saved successfully"}, status=200)
+        
+        except Exception as e:
+            # 捕获异常并返回错误信息
+            return response.json({"error": str(e)}, status=500)
+
+    @app.route("/save_kube_schedule", methods=["POST"])
+    async def save_kube_schedule(request):
+        try:
+            # 从 POST 请求中获取文件路径（可选参数），默认为 "output/schedule_history.png"
+            file_path = request.json.get("file_path", "output/schedule_history.png")
+
+            # 调用调度器的保存方法并获取结果
+        # 异步调用保存操作
+            kube_scheduler.save_schedule_history(file_path)
+
+            # 返回成功的 JSON 响应
+            return response.json({"message": "Schedule saved successfully"}, status=200)
+        
+        except Exception as e:
+            # 捕获异常并返回错误信息
+            return response.json({"error": str(e)}, status=500)
+
+
+            
 configure_routes(app)
 
 if __name__ == '__main__':
