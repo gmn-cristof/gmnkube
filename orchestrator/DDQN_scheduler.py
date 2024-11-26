@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import os
 
 NODE_COUNT = 10
-POD_COUNT = 30
 
 class DDQNScheduler:
     def __init__(self, node_controller):
@@ -35,6 +34,7 @@ class DDQNScheduler:
     def _update_action_size(self):
         # 更新 action_size 和模型的输出层大小
         self.action_size = len(self.node_controller.nodes)  # 动态获取节点数
+        self.state_size = 9 * self.action_size
         self.model = self._build_model()  # 重新构建模型
         self.target_model = self._build_model()  # 重新构建目标模型
 

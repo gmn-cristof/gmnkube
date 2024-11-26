@@ -184,6 +184,28 @@ try:
 except requests.exceptions.RequestException as e:
     print(f"An error occurred while saving schedule: {e}")
 
+try:
+    # 添加超时参数
+    response = requests.delete(f"{BASE_URL}/remove_all_pods", timeout=10)
+    
+    # 尝试解析 JSON 数据
+    try:
+        data = response.json()
+    except ValueError:
+        data = None
+
+    # 检查响应状态码
+    response.raise_for_status()  
+
+    # 输出响应结果
+    print("Response:", data if data else response.text)
+
+except requests.exceptions.Timeout:
+    print("The request timed out. Please try again later.")
+except requests.exceptions.RequestException as e:
+    print(f"An error occurred: {e}")
+    
+
 # # 删除 Pods
 # for pod_name in pod_names:
 #     response = requests.delete(f"{BASE_URL}/pods/{pod_name}")
