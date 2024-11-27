@@ -16,7 +16,7 @@ IMAGES = [
 # 创建节点
 node_names = []
 for i in range(1, NODE_COUNT + 1):
-    node_name = f"node{i}"
+    node_name = f"Test_node{i}"
     node_names.append(node_name)
     node_data = {
         "name": node_name,

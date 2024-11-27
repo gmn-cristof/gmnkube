@@ -10,7 +10,7 @@ from pod.pod_controller import PodController
 from container.image_handler import ImageHandler
 from node.node_controller import NodeController
 from orchestrator.DDQN_scheduler import DDQNScheduler
-
+from tests.system_tester import SystemTester
 from orchestrator.kube_scheduler_plus import Kube_Scheduler_Plus
 from sanic_cors import CORS
 import logging,json
@@ -416,6 +416,23 @@ def configure_routes(app):
         except Exception as e:
             # 捕获异常并返回错误信息
             return response.json({"error": str(e)}, status=500)
+        
+    @app.route("/run_test", methods=["GET"])
+    async def run_test(request):
+        try:
+            # 创建 SystemTester 实例
+            tester = SystemTester()
+            
+            # 执行测试流程
+            tester.run_test()
+            
+            # 返回成功消息
+            return json({"message": "Test executed successfully!"}, status=200)
+        
+        except Exception as e:
+            # 捕获错误并返回
+            logging.error(f"Error during test execution: {e}")
+            return json({"message": f"Error during test execution: {e}"}, status=500)
         
 
 

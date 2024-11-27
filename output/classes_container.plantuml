@@ -1,0 +1,37 @@
+@startuml classes_container
+set namespaceSeparator none
+class "Container" as container.container.Container {
+  command : list
+  etcd_client : EtcdClient
+  image : str
+  name : str
+  ports : list
+  resources : dict
+  add_port(port)
+  remove_port(port)
+  sync_to_etcd()
+  to_dict()
+  to_json()
+  update_resources(resources)
+}
+class "ContainerManager" as container.container_manager.ContainerManager {
+  etcd_client
+  container_info(name: str)
+  create_container(container: Container)
+  delete_container(name: str)
+  list_containers()
+}
+class "ContainerRuntime" as container.container_runtime.ContainerRuntime {
+  etcd_client
+  inspect_container(name: str)
+  list_containers()
+  remove_container(name: str)
+  start_container(container: Container)
+  stop_container(name: str)
+}
+class "ImageHandler" as container.image_handler.ImageHandler {
+  list_images() -> Optional[List[str]]
+  pull_image(image: str) -> bool
+  remove_image(image: str) -> bool
+}
+@enduml

@@ -1,0 +1,10 @@
+@startuml packages_pod
+set namespaceSeparator none
+package "pod" as pod {
+}
+package "pod.pod" as pod.pod {
+}
+package "pod.pod_controller" as pod.pod_controller {
+}
+pod.pod_controller --> pod
+@enduml

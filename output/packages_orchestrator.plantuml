@@ -1,0 +1,15 @@
+@startuml packages_orchestrator
+set namespaceSeparator none
+package "orchestrator" as orchestrator {
+}
+package "orchestrator.DDQN_scheduler" as orchestrator.DDQN_scheduler {
+}
+package "orchestrator.kube_scheduler" as orchestrator.kube_scheduler {
+}
+package "orchestrator.kube_scheduler_plus" as orchestrator.kube_scheduler_plus {
+}
+package "orchestrator.scheduler_random" as orchestrator.scheduler_random {
+}
+package "orchestrator.workload_controller" as orchestrator.workload_controller {
+}
+@enduml

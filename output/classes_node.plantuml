@@ -1,0 +1,47 @@
+@startuml classes_node
+set namespaceSeparator none
+class "Node" as node.node.Node {
+  allocated_cpu : float, int
+  allocated_gpu : float, int
+  allocated_io : float, int
+  allocated_memory : float, int
+  allocated_net : float, int
+  annotations : dict
+  ip_address
+  labels : dict
+  name
+  pods : list
+  status : str
+  total_cpu : NoneType, int
+  total_gpu
+  total_io
+  total_memory
+  total_net
+  add_pod(pod)
+  can_schedule(required_cpu, required_memory, required_gpu, required_io, required_net)
+  convert_resources(resource_dict)
+  get_node_info()
+  load_node_info()
+  parse_cpu(cpu_str)
+  parse_gpu(gpu_str)
+  parse_memory(mem_str)
+  remove_pod(pod)
+  set_status(status)
+  to_dict()
+}
+class "NodeController" as node.node_controller.NodeController {
+  etcd_client
+  nodes : dict
+  add_node(name, ip_address, total_cpu, total_memory, total_gpu, total_io, total_net, labels, annotations)
+  add_pod_to_node(pod, node_name)
+  change_node_status(status, node_name)
+  get_all_nodes()
+  get_node(name)
+  list_nodes()
+  remove_all_pods()
+  remove_node(name)
+  remove_pod_from_node(pod, node_name)
+  schedule_pod_to_node(pod, node_name)
+  update_node_status(node_name, status)
+}
+@enduml

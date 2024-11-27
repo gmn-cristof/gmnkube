@@ -1,0 +1,31 @@
+@startuml classes_pod
+set namespaceSeparator none
+class "Pod" as pod.pod.Pod {
+  containers : list
+  name : str
+  namespace : str
+  resources : dict
+  status : str
+  volumes : dict
+  add_container(container)
+  get_status()
+  remove_container(container_name: str)
+  to_dict()
+  to_json()
+}
+class "PodController" as pod.pod_controller.PodController {
+  container_manager
+  container_runtime
+  etcd_client
+  pods : dict
+  create_pod(name: str, containers: list, namespace: str)
+  create_pod_from_yaml(yaml_file: str)
+  delete_pod(name: str, namespace: str)
+  get_all_pods()
+  get_pod(name: str, namespace: str)
+  list_pods(namespace: str)
+  restart_pod(name: str, namespace: str)
+  start_pod(name: str, namespace: str)
+  stop_pod(name: str, namespace: str)
+}
+@enduml

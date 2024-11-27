@@ -1,0 +1,12 @@
+@startuml packages_etcd
+set namespaceSeparator none
+package "etcd" as etcd {
+}
+package "etcd.etcd_client" as etcd.etcd_client {
+}
+package "etcd.etcd_config" as etcd.etcd_config {
+}
+package "etcd.etcd_manager" as etcd.etcd_manager {
+}
+etcd.etcd_manager --> etcd.etcd_client
+@enduml
