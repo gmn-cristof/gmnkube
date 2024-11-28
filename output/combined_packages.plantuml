@@ -1,8 +1,0 @@
-@startuml
-!include /mnt/d/gmnkube/gmnkube/output/packages_api.plantuml
-!include /mnt/d/gmnkube/gmnkube/output/packages_container.plantuml
-!include /mnt/d/gmnkube/gmnkube/output/packages_etcd.plantuml
-!include /mnt/d/gmnkube/gmnkube/output/packages_node.plantuml
-!include /mnt/d/gmnkube/gmnkube/output/packages_orchestrator.plantuml
-!include /mnt/d/gmnkube/gmnkube/output/packages_pod.plantuml
-@enduml

@@ -1,9 +1,0 @@
-@startuml
-!include /mnt/d/gmnkube/gmnkube/output/classes_api.plantuml
-!include /mnt/d/gmnkube/gmnkube/output/classes_container.plantuml
-!include /mnt/d/gmnkube/gmnkube/output/classes_etcd.plantuml
-!include /mnt/d/gmnkube/gmnkube/output/classes_node.plantuml
-!include /mnt/d/gmnkube/gmnkube/output/classes_orchestrator.plantuml
-!include /mnt/d/gmnkube/gmnkube/output/classes_pod.plantuml
-@enduml
-
