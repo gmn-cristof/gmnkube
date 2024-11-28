@@ -14,6 +14,11 @@ from tests.system_tester import SystemTester
 from orchestrator.kube_scheduler_plus import Kube_Scheduler_Plus
 from sanic_cors import CORS
 import logging,json
+from hypercorn.asyncio import serve
+from hypercorn.config import Config
+import asyncio
+
+
 
 app = Sanic(__name__)
 app.config.DEBUG = True
@@ -438,6 +443,15 @@ def configure_routes(app):
 
             
 configure_routes(app)
+async def main():
+    config = Config()
+    config.bind = ["0.0.0.0:8001"]
+    config.workers = 1
+    config.worker_timeout = 180
+
+    # 启动服务器
+    await serve(app, config)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8001, debug=True)
+    # 使用 asyncio.run() 来运行 main 函数
+    asyncio.run(main())
